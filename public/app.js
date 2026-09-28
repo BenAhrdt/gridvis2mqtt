@@ -837,12 +837,30 @@ function mqttDialogSelectedMeasurements() {
 }
 
 function mqttDeviceGroupName(device) {
-  const text = `${deviceType(device)} ${deviceName(device)}`.toLocaleLowerCase('de');
-  if (/janitza.*umg\s*801|umg\s*801/.test(text)) return 'UMG 801';
-  if (/genericmodbus|modbus/.test(text)) return 'Modbus';
-  if (/externvalues|digital|\bdi\b|eingang/.test(text)) return 'DI';
-  if (/virtual|kpi|virtuell|software|proxmox/.test(text)) return 'VD';
-  return 'Weitere Geräte';
+  const type = deviceType(device).trim();
+  const compact = type.toLocaleLowerCase('de').replace(/[^a-z0-9]/g, '');
+  if (compact === 'janitzaumg801') return 'UMG 801';
+  if (compact.includes('janitzaumg801basemodule')) return 'UMG 801 Basismodul';
+  if (compact.includes('janitzaumg801measurementgroup')) return 'UMG 801 Messgruppe';
+  if (compact.includes('virtualkpi') || compact.includes('kpi')) return 'KPI';
+  if (compact.includes('externvalues') || compact === 'di' || compact.includes('digitalinput')) return 'DI';
+  if (compact.includes('genericmodbus') || compact === 'modbus') return 'Modbus';
+  if (compact === 'xxxvirtual' || compact === 'virtual' || compact.includes('virtualdevice')) return 'VD';
+  return mqttFriendlyDeviceType(type);
+}
+
+function mqttFriendlyDeviceType(type) {
+  const raw = String(type || '').trim();
+  if (!raw || raw === 'GridVis-Messgerät') return 'Weitere Geräte';
+  const withoutTechnicalPrefix = raw.replace(/^(xxx|zz)/i, '');
+  const spaced = withoutTechnicalPrefix
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Za-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([A-Za-z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return spaced || raw;
 }
 
 function mqttDeviceTextParts(device) {
@@ -873,6 +891,7 @@ function mqttDeviceDisplayPath(device) {
 
 function mqttDeviceIcon(device) {
   const text = `${deviceType(device)} ${deviceName(device)}`.toLocaleLowerCase('de');
+  if (/kpi/.test(text)) return 'kpi';
   if (/modbus/.test(text)) return 'modbus';
   if (/digital|\bdi\b|eingang/.test(text)) return 'digital';
   if (/virtu|software|proxmox/.test(text)) return 'virtual';
@@ -885,7 +904,8 @@ function mqttFolderIcon() {
 
 function mqttDeviceIconMarkup(device) {
   const icon = mqttDeviceIcon(device);
-  const extra = icon === 'digital' ? '<path d="M5 12h14M8 8v8M16 8v8"></path>'
+  const extra = icon === 'kpi' ? '<path d="M5 19V9M12 19V5M19 19v-7"></path><path d="M4 19h17"></path>'
+    : icon === 'digital' ? '<path d="M5 12h14M8 8v8M16 8v8"></path>'
     : icon === 'modbus' ? '<path d="M5 8h14v8H5zM8 5v3M16 5v3M8 16v3M16 16v3"></path>'
       : icon === 'virtual' ? '<path d="m12 4 7 4v8l-7 4-7-4V8l7-4Z"></path><path d="m8 12 2.5 2.5L16 9"></path>'
         : '<rect class="mqtt-meter-body" x="3" y="5" width="18" height="13" rx="1.5"></rect><path class="mqtt-meter-detail" d="M7 9h10M7 13h6"></path><path class="mqtt-meter-terminal" d="M7 18v2M17 18v2"></path>';
