@@ -1168,7 +1168,12 @@ function openMqttSelectionDialog({ deviceIdValue = '', mode = 'live', measuremen
 }
 
 function closeMqttSelectionDialog() {
-  $('#mqtt-selection-dialog')?.close();
+  const dialog = $('#mqtt-selection-dialog');
+  if (dialog?.open && typeof dialog.close === 'function') {
+    dialog.close();
+  } else {
+    dialog?.removeAttribute('open');
+  }
   mqttDialogState.loading = false;
 }
 
@@ -5974,6 +5979,10 @@ function attachEvents() {
   });
   $('#mqtt-selection-close')?.addEventListener('click', closeMqttSelectionDialog);
   $('#mqtt-selection-cancel')?.addEventListener('click', closeMqttSelectionDialog);
+  $('#mqtt-selection-dialog')?.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeMqttSelectionDialog();
+  });
   $$('[data-mqtt-dialog-tab]').forEach((button) => button.addEventListener('click', () => setMqttDialogTab(button.dataset.mqttDialogTab)));
   $('#mqtt-dialog-kind')?.addEventListener('change', (event) => {
     mqttDialogState.mode = event.target.value === 'historical' ? 'historical' : 'live';
