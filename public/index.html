@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050708">
     <title>GridVis2MQTT</title>
     <link rel="icon" href="/branding/gridvis2mqtt.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=0.3.11-2">
+    <link rel="stylesheet" href="/styles.css?v=0.3.11-5">
   </head>
   <body>
     <section class="auth-screen" id="login-screen" hidden>
@@ -48,7 +48,13 @@
           </a>
         </div>
         <div class="topbar-left">
-          <button class="icon-button menu-toggle" id="menu-toggle" type="button" aria-label="Menü öffnen">☰</button>
+          <button class="icon-button menu-toggle" id="menu-toggle" type="button" aria-label="Menü öffnen" aria-expanded="false">☰</button>
+          <nav class="topbar-nav" aria-label="Schnellnavigation">
+            <a class="topbar-nav-link active" href="#overview" data-view-link="overview">Übersicht</a>
+            <a class="topbar-nav-link" href="#devices" data-view-link="devices">Geräte</a>
+            <a class="topbar-nav-link" href="#mqtt" data-view-link="mqtt">MQTT</a>
+            <a class="topbar-nav-link" href="#alarms" data-view-link="alarms">Alarme</a>
+          </nav>
           <div class="breadcrumbs"><span>GridVis2MQTT</span><span>/</span><strong id="breadcrumb-current">Übersicht</strong></div>
         </div>
         <div class="topbar-actions">
@@ -69,23 +75,27 @@
         </div>
 
         <nav class="sidebar-nav" aria-label="Hauptnavigation">
-          <p class="nav-label">Arbeitsbereich</p>
+          <p class="nav-label">Navigation</p>
           <a class="nav-link active" href="#overview" data-view-link="overview"><span class="nav-icon">⌂</span><span>Übersicht</span></a>
           <a class="nav-link" href="#devices" data-view-link="devices"><span class="nav-icon device-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 8h10M7 12h4M7 16h7"></path></svg></span><span>Geräte</span><span class="nav-count" id="device-nav-count">0</span></a>
           <a class="nav-link" href="#mqtt" data-view-link="mqtt"><span class="nav-icon">⌁</span><span>MQTT</span><span class="nav-count" id="mqtt-nav-count">0</span></a>
           <a class="nav-link" href="#alarms" data-view-link="alarms"><span class="nav-icon">△</span><span>Alarme</span></a>
           <a class="nav-link" href="#logbook" data-view-link="logbook"><span class="nav-icon">☷</span><span>Logbuch</span></a>
 
-          <p class="nav-label nav-label-spaced">Verwaltung</p>
-          <a class="nav-link" href="#settings" data-view-link="settings"><span class="nav-icon">⚙</span><span>Verbindungen</span></a>
-          <a class="nav-link" href="#administration" data-view-link="administration"><span class="nav-icon">☷</span><span>Einstellungen</span></a>
+          <button class="nav-label nav-section-trigger" id="management-toggle" type="button" aria-expanded="false" aria-controls="nav-management-flyout"><span>Verwaltung</span><span class="nav-section-arrow" aria-hidden="true">›</span></button>
         </nav>
 
         <div class="sidebar-bottom">
           <div class="sidebar-status"><span class="status-dot" id="sidebar-status-small"></span><span id="sidebar-status-text">Nicht verbunden</span></div>
-          <small class="build-info">GridVis2MQTT <span id="app-version">v0.1.0</span></small>
         </div>
       </aside>
+      <div class="nav-management-flyout" id="nav-management-flyout" aria-hidden="true">
+        <p class="nav-label">Verwaltung</p>
+        <a class="nav-link" href="#settings" data-view-link="settings"><span class="nav-icon">⚙</span><span>Verbindungen</span></a>
+        <a class="nav-link" href="#administration" data-view-link="administration"><span class="nav-icon">☷</span><span>Einstellungen</span></a>
+        <button class="nav-link nav-info" id="menu-info" type="button"><span class="nav-icon">ⓘ</span><span>Info</span><span class="menu-version" id="menu-version">v0.1.0</span></button>
+      </div>
+      <button class="sidebar-backdrop" id="sidebar-backdrop" type="button" aria-label="Menü schließen"></button>
 
       <div class="main-shell">
         <main class="page-content">
@@ -297,10 +307,9 @@
               <article class="content-panel update-settings-panel"><div class="panel-heading"><div><p class="overline">Version</p><h2>Update prüfen</h2><p class="panel-copy">Bei einer Installation aus einem Git-Klon kann hier geprüft werden, ob das konfigurierte Remote neue Commits enthält.</p></div></div><div class="settings-form"><div class="update-status-row"><span>Installierte Version</span><strong id="update-current-version">–</strong></div><p class="form-hint" id="update-status">Noch nicht geprüft.</p><div class="panel-actions"><button class="button button-secondary" id="update-check" type="button">Update prüfen</button></div><p class="form-hint">Das eigentliche Update wird aktuell kontrolliert über <code>update.sh</code> ausgeführt. Sobald ein Git-Remote feststeht, kann der Neustart per Oberfläche ergänzt werden.</p></div></article>
             </div>
           </section>
-          <footer class="app-footer"><span>GridVis2MQTT · lesender Betrieb</span><span id="footer-status">Bereit</span></footer>
         </main>
       </div>
     </div>
-    <script src="/app.js?v=0.3.11-2" type="module"></script>
+    <script src="/app.js?v=0.3.11-5" type="module"></script>
   </body>
 </html>

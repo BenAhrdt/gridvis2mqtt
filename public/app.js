@@ -683,6 +683,30 @@ function closeDeviceInfoDialog() {
   configureLiveRefresh();
 }
 
+function setSidebarOpen(open) {
+  const sidebar = $('#sidebar');
+  const menuToggle = $('#menu-toggle');
+  if (!sidebar) return;
+  setManagementOpen(false);
+  sidebar.classList.toggle('open', open);
+  menuToggle?.setAttribute('aria-expanded', String(open));
+  menuToggle?.setAttribute('aria-label', open ? 'Menü schließen' : 'Menü öffnen');
+}
+
+function setManagementOpen(open) {
+  const flyout = $('#nav-management-flyout');
+  const toggle = $('#management-toggle');
+  if (!flyout) return;
+  if (open && toggle) {
+    const bounds = toggle.getBoundingClientRect();
+    flyout.style.top = `${Math.round(bounds.top)}px`;
+    flyout.style.left = `${Math.round(bounds.right)}px`;
+  }
+  flyout.classList.toggle('open', open);
+  flyout.setAttribute('aria-hidden', String(!open));
+  toggle?.setAttribute('aria-expanded', String(open));
+}
+
 const dialogMouseDownOutside = new WeakMap();
 if (typeof document.addEventListener === 'function') {
   document.addEventListener('mousedown', (event) => {
@@ -711,13 +735,13 @@ function setView(view, updateHash = true) {
   }
   state.currentView = view;
   $$('.page-view').forEach((section) => section.classList.toggle('active', section === target));
-  $$('.nav-link').forEach((link) => {
+  $$('[data-view-link]').forEach((link) => {
     const isActive = link.dataset.viewLink === view || (view === 'device-detail' && link.dataset.viewLink === 'devices');
     link.classList.toggle('active', isActive);
   });
   setText('#breadcrumb-current', viewLabels[view] || view);
   if (updateHash && view !== 'device-detail') history.replaceState(null, '', `#${view}`);
-  $('#sidebar')?.classList.remove('open');
+  setSidebarOpen(false);
   configureLiveRefresh();
   configureHistoricalRefresh();
   configureLogbookRefresh();
@@ -5279,7 +5303,7 @@ async function loadInitial() {
     else if (connectionStatus === 'offline') setStatus('Verbindung gespeichert, zuletzt nicht erreichbar', false);
     else setStatus('Verbindung gespeichert – noch nicht geprüft', 'unknown');
   }
-  setText('#app-version', `v${state.config.version}`);
+  setText('#menu-version', `v${state.config.version}`);
   $('#gridvis-form [name="baseUrl"]').value = state.config.gridvis.baseUrl || '';
   $('#application-public-url').value = state.config.application?.publicUrl || '';
   $('#gridvis-form [name="username"]').value = state.config.gridvis.username || '';
@@ -6692,8 +6716,14 @@ function attachEvents() {
     setView(link.dataset.viewLink);
   }));
   $$('.detail-tab').forEach((button) => button.addEventListener('click', () => setDetailTab(button.dataset.detailTab)));
-  $('#menu-toggle').addEventListener('click', () => $('#sidebar').classList.add('open'));
-  $('#sidebar-close').addEventListener('click', () => $('#sidebar').classList.remove('open'));
+  $('#menu-toggle').addEventListener('click', () => setSidebarOpen(!$('#sidebar').classList.contains('open')));
+  $('#sidebar-close').addEventListener('click', () => setSidebarOpen(false));
+  $('#sidebar-backdrop').addEventListener('click', () => setSidebarOpen(false));
+  $('#management-toggle').addEventListener('click', () => setManagementOpen(!$('#nav-management-flyout').classList.contains('open')));
+  $('#menu-info').addEventListener('click', () => {
+    const version = state.config?.version ? `v${state.config.version}` : 'Version unbekannt';
+    showToast(`GridVis2MQTT · Energy bridge · ${version}`, 'success');
+  });
   $('#project-select').addEventListener('change', () => {
     const project = $('#project-select').value;
     restoreProjectData(project);
