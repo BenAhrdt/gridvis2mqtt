@@ -1,0 +1,12 @@
+data/config.local.json
+data/config.json
+data/state.local.json
+data/state.json
+data/auth.json
+data/update-status.json
+data/device-icons/
+data/auth.local.json
+data/backups/
+node_modules/
+AGENTS.md
+secondBrain/

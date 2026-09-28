@@ -1,0 +1,19 @@
+{
+  "name": "gridvis2mqtt",
+  "version": "0.3.11",
+  "private": true,
+  "description": "Read Janitza GridVis data and publish it through MQTT discovery profiles.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/state.js && node --check src/gridvis-client.js && node --check src/mqtt-publisher.js && node --check src/discovery/home-assistant.js && node --check public/measurement-display.js && node --check public/app.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "mqtt": "^5.16.0"
+  }
+}

@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#050708">
+    <title>GridVis2MQTT</title>
+    <link rel="icon" href="/branding/gridvis2mqtt.png" type="image/png">
+    <link rel="stylesheet" href="/styles.css?v=0.3.11-1">
+  </head>
+  <body>
+    <section class="auth-screen" id="login-screen" hidden>
+      <div class="auth-layout">
+        <img class="auth-logo" src="/branding/gridvis2mqtt.png" alt="GridVis2MQTT">
+        <form class="auth-card" id="login-form">
+          <p class="auth-kicker">GridVis2MQTT</p>
+          <h1>Anmelden</h1>
+          <p class="auth-copy">Melde dich an, um die Anwendung und ihre Einstellungen zu öffnen.</p>
+          <label class="field"><span>Benutzername</span><input id="login-username" name="username" type="text" value="admin" autocomplete="username" required></label>
+          <label class="field"><span>Passwort</span><input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
+          <p class="form-hint">Beim ersten Start: Benutzer <strong>admin</strong>, Startpasswort <strong>gridvis2mqtt</strong>. Danach muss das Passwort geändert werden.</p>
+          <p class="auth-error" id="login-error" role="alert"></p>
+          <button class="button button-primary" type="submit">Anmelden</button>
+        </form>
+      </div>
+    </section>
+    <section class="auth-screen" id="password-change-screen" hidden>
+      <div class="auth-layout">
+        <img class="auth-logo" src="/branding/gridvis2mqtt.png" alt="GridVis2MQTT">
+        <form class="auth-card" id="password-change-form">
+          <p class="auth-kicker">Erster Start</p>
+          <h1>Passwort ändern</h1>
+          <p class="auth-copy">Das Startpasswort darf nicht dauerhaft verwendet werden.</p>
+          <label class="field"><span>Neues Passwort</span><input id="new-password" name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+          <label class="field"><span>Neues Passwort wiederholen</span><input id="new-password-confirm" name="confirmPassword" type="password" minlength="8" autocomplete="new-password" required></label>
+          <p class="form-hint">Mindestens 8 Zeichen.</p>
+          <p class="auth-error" id="password-change-error" role="alert"></p>
+          <button class="button button-primary" type="submit">Passwort speichern</button>
+        </form>
+      </div>
+    </section>
+    <div class="app-shell" id="app-shell" hidden>
+      <header class="topbar">
+        <div class="topbar-brand">
+          <a class="brand" href="#overview" data-view-link="overview" aria-label="GridVis2MQTT Startseite">
+            <img class="brand-mark-image" src="/branding/gridvis2mqtt_white.png" alt="">
+            <span class="brand-copy"><strong>GridVis2MQTT</strong><small>Energy bridge</small></span>
+          </a>
+        </div>
+        <div class="topbar-left">
+          <button class="icon-button menu-toggle" id="menu-toggle" type="button" aria-label="Menü öffnen">☰</button>
+          <div class="breadcrumbs"><span>GridVis2MQTT</span><span>/</span><strong id="breadcrumb-current">Übersicht</strong></div>
+        </div>
+        <div class="topbar-actions">
+          <div class="topbar-connections" aria-label="Verbindungsstatus">
+            <span class="topbar-connection" title="GridVis-Verbindung"><span class="status-dot" id="topbar-status"></span><span class="topbar-connection-label">GridVis <strong id="topbar-status-text">Offline</strong></span></span>
+            <span class="topbar-connection" title="MQTT-Broker-Verbindung"><span class="status-dot unknown" id="topbar-mqtt-status"></span><span class="topbar-connection-label">Broker <strong id="topbar-mqtt-status-text">Nicht geprüft</strong></span></span>
+          </div>
+          <button class="button button-quiet logout-button" id="logout" type="button">Abmelden</button>
+        </div>
+      </header>
+      <aside class="sidebar" id="sidebar">
+        <div class="brand-row">
+          <a class="brand" href="#overview" data-view-link="overview" aria-label="GridVis2MQTT Startseite">
+            <img class="brand-mark-image" src="/branding/gridvis2mqtt_white.png" alt="">
+            <span class="brand-copy"><strong>GridVis2MQTT</strong><small>Energy bridge</small></span>
+          </a>
+          <button class="icon-button sidebar-close" id="sidebar-close" type="button" aria-label="Menü schließen">×</button>
+        </div>
+
+        <nav class="sidebar-nav" aria-label="Hauptnavigation">
+          <p class="nav-label">Arbeitsbereich</p>
+          <a class="nav-link active" href="#overview" data-view-link="overview"><span class="nav-icon">⌂</span><span>Übersicht</span></a>
+          <a class="nav-link" href="#devices" data-view-link="devices"><span class="nav-icon device-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 8h10M7 12h4M7 16h7"></path></svg></span><span>Geräte</span><span class="nav-count" id="device-nav-count">0</span></a>
+          <a class="nav-link" href="#alarms" data-view-link="alarms"><span class="nav-icon">△</span><span>Alarme</span></a>
+          <a class="nav-link" href="#logbook" data-view-link="logbook"><span class="nav-icon">☷</span><span>Logbuch</span></a>
+
+          <p class="nav-label nav-label-spaced">Verwaltung</p>
+          <a class="nav-link" href="#settings" data-view-link="settings"><span class="nav-icon">⚙</span><span>Verbindungen</span></a>
+          <a class="nav-link" href="#administration" data-view-link="administration"><span class="nav-icon">☷</span><span>Einstellungen</span></a>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="sidebar-status"><span class="status-dot" id="sidebar-status-small"></span><span id="sidebar-status-text">Nicht verbunden</span></div>
+          <small class="build-info">GridVis2MQTT <span id="app-version">v0.1.0</span></small>
+        </div>
+      </aside>
+
+      <div class="main-shell">
+        <main class="page-content">
+          <dialog class="toast" id="toast" role="status" aria-live="polite"></dialog>
+          <dialog class="device-info-dialog" id="device-info-dialog" aria-labelledby="device-info-name">
+            <div class="device-info-dialog-header">
+              <div class="device-info-heading"><div class="device-info-avatar device-avatar" id="device-info-avatar">▦</div><div><p class="overline">Schnellübersicht</p><h2 id="device-info-name">Gerät</h2><p id="device-info-subtitle">Geräteinformationen</p></div></div>
+              <button class="device-info-close" id="device-info-close" type="button" aria-label="Schnellübersicht schließen">×</button>
+            </div>
+            <div class="device-info-badges"><span class="state-badge" id="device-info-status">online</span><span class="soft-badge" id="device-info-id">ID –</span><span class="soft-badge" id="device-info-serial">Seriennummer –</span></div>
+            <div class="device-info-values" id="device-info-values"></div><div class="device-info-placeholder" id="device-info-empty"><span>⌁</span><div><strong>Keine Messwerte ausgewählt</strong><p>Für dieses Gerät sind noch keine Live- oder historischen Messwerte ausgewählt.</p></div></div>
+          </dialog>
+          <dialog class="history-details-dialog" id="history-details-dialog" aria-labelledby="history-details-name">
+            <div class="history-details-dialog-header"><div><p class="overline">Historische Werte</p><h2 id="history-details-name">Messwert</h2><p id="history-details-subtitle">–</p></div><button class="device-info-close" id="history-details-close" type="button" aria-label="Historische Details schließen">×</button></div>
+            <p class="history-details-intro" id="history-details-intro">Alle ausgewählten Zeitbereiche dieses Messwerts.</p>
+            <div class="history-details-list" id="history-details-list"></div>
+          </dialog>
+          <dialog class="measurement-settings-dialog" id="measurement-settings-dialog" aria-labelledby="measurement-settings-name">
+            <form method="dialog" id="measurement-settings-form">
+              <div class="device-info-dialog-header"><div><p class="overline">Messwert-Einstellungen</p><h2 id="measurement-settings-name">Messwert</h2><p id="measurement-settings-detail">–</p></div><button class="device-info-close" id="measurement-settings-close" type="button" aria-label="Messwert-Einstellungen schließen">×</button></div>
+              <fieldset class="measurement-display-settings">
+                <legend>Anzeige</legend>
+                <div class="measurement-display-fields">
+                  <label class="field"><span>Anzeigeeinheit</span><select id="measurement-settings-unit"></select></label>
+                  <label class="field"><span>Nachkommastellen</span><select id="measurement-settings-decimals"></select></label>
+                </div>
+                <output id="measurement-settings-display-preview" class="measurement-display-preview" aria-label="Anzeigevorschau">—</output>
+                <p class="form-hint">Gilt für Live-Kacheln und Schnellübersicht. MQTT überträgt den unveränderten API-Wert in seiner ursprünglichen Einheit.</p>
+              </fieldset>
+              <label class="field"><span>MQTT-Ausgabevariante</span><select id="measurement-settings-profile"></select></label><div class="field"><span>State-Topic (Vorschau)</span><output class="measurement-settings-topic" id="measurement-settings-topic">–</output></div>
+              <details class="measurement-discovery-details measurement-rest-details" id="measurement-rest-details">
+                <summary>GridVis-REST-Abfrage anzeigen</summary>
+                <div class="measurement-discovery-content">
+                  <div class="field"><span>GridVis-REST-Abfrage (Vorschau)</span><pre class="measurement-rest-request" id="measurement-settings-rest-request">–</pre></div>
+                  <p class="form-hint" id="measurement-settings-rest-hint">–</p>
+                </div>
+              </details>
+              <details class="measurement-discovery-details" id="measurement-discovery-details">
+                <summary>Discovery-Details anzeigen</summary>
+                <div class="measurement-discovery-content">
+                  <div class="field"><span>Discovery-Topic</span><output class="measurement-settings-topic" id="measurement-settings-discovery-topic">–</output></div>
+                  <div class="field"><span>Discovery-Payload</span><pre class="measurement-discovery-payload" id="measurement-settings-discovery-payload">–</pre></div>
+                </div>
+              </details>
+              <label class="profile-default-field measurement-settings-retain"><input id="measurement-settings-retain" type="checkbox"> State-Wert retained veröffentlichen</label><p class="form-hint">State-Werte werden standardmäßig nicht retained gesendet. Discovery wird zuerst veröffentlicht, der zugehörige Wert folgt kurz danach. Retain kann je Messwert optional aktiviert werden.</p>
+              <label class="field"><span id="measurement-settings-interval-label">Gerätezyklus</span><select id="measurement-settings-interval"><option value="0">Standardzyklus verwenden</option><option value="1">Jede Sekunde</option><option value="2">Alle 2 Sekunden</option><option value="5">Alle 5 Sekunden</option><option value="10">Alle 10 Sekunden</option><option value="30">Alle 30 Sekunden</option><option value="60">Jede Minute</option><option value="300">Alle 5 Minuten</option></select></label>
+              <div id="measurement-settings-history-options" class="measurement-settings-history-options" hidden><label class="field"><span>Zeitbereiche</span><select id="measurement-settings-history-range-mode"><option value="standard">Standard verwenden</option><option value="custom">Individuell festlegen</option></select></label><fieldset class="history-range-fieldset" id="measurement-settings-history-range-fieldset"><legend>Individuelle Zeitbereiche</legend><div class="history-range-options" id="measurement-settings-history-ranges"></div><p class="form-hint">Mehrere Zeitbereiche können gleichzeitig abgerufen werden.</p></fieldset><label class="field"><span>Vergleichszeiträume</span><select id="measurement-settings-history-comparison-mode"><option value="standard">Standard verwenden</option><option value="custom">Individuell festlegen</option></select></label><fieldset class="history-range-fieldset" id="measurement-settings-history-comparison-fieldset"><legend>Individuelle Vergleichszeiträume</legend><div id="measurement-settings-history-comparisons" class="history-comparisons"></div><button class="button button-quiet history-comparison-add" id="add-measurement-history-comparison" type="button">+ Vergleichszeitraum</button><p class="form-hint">Mehrere Vergleiche können gleichzeitig abgerufen werden.</p></fieldset></div>
+              <p class="form-hint" id="measurement-settings-interval-hint">Der Gerätezyklus gilt für alle ausgewählten Parameter dieses Geräts. Geräte mit demselben Zyklus werden gemeinsam abgefragt.</p>
+              <div class="panel-actions"><button class="button button-primary" id="measurement-settings-save" type="submit">Übernehmen</button></div>
+            </form>
+          </dialog>
+
+          <section class="page-view active" id="view-overview" data-view="overview">
+            <div class="page-heading">
+              <div><p class="overline">Arbeitsbereich</p><h1>Übersicht</h1><p class="page-subtitle">GridVis-Projekte, Geräte und veröffentlichte Messwerte auf einen Blick.</p></div>
+            </div>
+
+            <div class="stat-grid">
+              <article class="stat-card"><div class="stat-icon blue stat-device-icon"><svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 8h10M7 12h4M7 16h7"></path></svg></div><div><span>Geräte</span><strong id="stat-devices">0</strong><small id="stat-devices-detail">Noch nicht geladen</small></div></article>
+              <article class="stat-card"><div class="stat-icon stat-mqtt-icon"><img src="/branding/mqtt.png" alt="" aria-hidden="true"></div><div><span>Discovery-Topics</span><strong id="selected-count">0</strong><small id="stat-discovery-detail">Topics vorbereitet</small></div></article>
+            </div>
+
+            <div class="overview-grid">
+              <article class="content-panel connection-panel">
+                <div class="panel-heading"><div><p class="overline">Datenquelle</p><h2 id="connection-title">Noch keine GridVis-Verbindung</h2></div><span class="state-badge offline" id="connection-pill">offline</span></div>
+                <p class="panel-copy" id="connection-detail">Konfiguriere die GridVis-URL, lade ein Projekt und wähle anschließend ein Gerät aus.</p>
+                <div class="connection-meta"><div><span>GridVis-Version</span><strong id="gridvis-version">–</strong><small id="gridvis-version-detail">Noch nicht abgefragt</small></div><div><span>MQTT-Ausgabe</span><strong id="mqtt-state">deaktiviert</strong><small id="mqtt-state-detail">Kein Broker konfiguriert</small></div></div>
+              </article>
+            </div>
+
+            <article class="content-panel overview-note"><div class="note-symbol">i</div><div><strong>Lesender Betrieb</strong><p>GridVis2MQTT liest Daten aus GridVis und veröffentlicht sie über MQTT. Schreib- und Command-Topics sind bewusst noch nicht aktiviert.</p></div><span class="read-only-badge">read only</span></article>
+          </section>
+
+          <section class="page-view" id="view-devices" data-view="devices">
+            <div class="page-heading">
+              <div><p class="overline">GridVis</p><h1>Geräte</h1><p class="page-subtitle">Geräteverwaltung und Auswahl der Messwerte für dieses Projekt.</p></div>
+            </div>
+            <div class="toolbar content-panel">
+              <div class="toolbar-group"><label class="field compact-field"><span>Gerät direkt öffnen</span><select id="device-select"><option value="">Erst Projekt laden</option></select></label><label class="field sort-field"><span>Sortierung</span><select id="device-sort"><option value="name">Alphabetisch</option><option value="type">Nach Typ</option><option value="selected-name">Mit Auswahl (Alphabetisch)</option><option value="selected-type">Mit Auswahl (Nach Typ)</option></select></label><span class="toolbar-status" id="selection-status">Keine Quelle ausgewählt</span></div>
+              <label class="search-field"><span>⌕</span><input id="device-search" type="search" placeholder="Gerät suchen ..."></label>
+            </div>
+            <div class="device-layout">
+              <div class="device-content"><div class="list-header"><div><h2>Geräteübersicht</h2><span id="device-list-caption">0 Geräte im Projekt</span></div></div><div class="device-list" id="device-list"><div class="empty-state"><span class="empty-icon">▦</span><strong>Noch keine Geräte geladen</strong><p>Verbinde GridVis und wähle ein Projekt aus, um die Geräteübersicht zu laden.</p><button class="button button-primary" id="empty-settings" type="button">Verbindung einrichten</button></div></div></div>
+            </div>
+          </section>
+
+          <section class="page-view" id="view-device-detail" data-view="device-detail">
+            <div class="detail-topline"><button class="back-link" id="back-to-devices" type="button">‹ Zurück zu Geräte</button><span class="detail-path">GridVis / Geräte / <strong id="detail-path-name">–</strong></span></div>
+            <div class="device-hero content-panel"><div class="device-avatar large">▦</div><div class="device-hero-copy"><p class="overline">GridVis-Messgerät</p><h1 id="device-detail-name">Kein Gerät ausgewählt</h1><p id="device-detail-subtitle">Gerätedetails</p><div class="device-badges"><span class="state-badge offline" id="device-detail-status">nicht geladen</span><span class="soft-badge" id="device-detail-id">ID –</span><span class="soft-badge" id="device-detail-model">Modell –</span></div></div></div>
+            <nav class="detail-tabs" aria-label="Gerätedetails"><button class="detail-tab active" data-detail-tab="info" type="button">Info</button><button class="detail-tab" data-detail-tab="live" type="button">Live-Messwerte <span id="live-tab-count">0</span></button><button class="detail-tab" data-detail-tab="history" type="button">Historie <span id="history-tab-count">0</span></button></nav>
+
+            <section class="detail-tab-panel active" id="detail-panel-info" data-detail-panel="info"><div class="detail-columns"><article class="content-panel"><div class="panel-heading"><div><p class="overline">Geräteinformationen</p><h2>Stammdaten</h2></div><span class="panel-mark">i</span></div><dl class="data-list"><div><dt>Name</dt><dd id="info-name">–</dd></div><div><dt>Geräte-ID</dt><dd id="info-id">–</dd></div><div><dt>Seriennummer</dt><dd id="info-serial">–</dd></div><div><dt>Typ</dt><dd id="info-type">–</dd></div><div><dt>Firmware</dt><dd id="info-firmware">–</dd></div><div><dt>Hardware</dt><dd id="info-hardware">–</dd></div><div><dt>Status</dt><dd id="info-status">–</dd></div><div><dt>Statusmeldung</dt><dd id="info-status-message">–</dd></div><div><dt>Beschreibung</dt><dd id="info-description">–</dd></div></dl></article></div></section>
+
+            <section class="detail-tab-panel" id="detail-panel-live" data-detail-panel="live"><div class="section-bar"><div><p class="overline">Online Recorder</p><h2>Live-Messwerte</h2><p class="section-description">Anzeige-Werte werden nur hier abgefragt. MQTT-aktive Werte werden unabhängig von der geöffneten Seite im gewählten Zyklus veröffentlicht.</p></div><div class="live-actions"><label class="live-refresh-control"><span>Standardzyklus</span><select id="live-refresh-interval"><option value="0">Manuell</option><option value="1">Jede Sekunde</option><option value="2">Alle 2 Sekunden</option><option value="5">Alle 5 Sekunden</option><option value="10">Alle 10 Sekunden</option><option value="30">Alle 30 Sekunden</option><option value="60">Jede Minute</option><option value="300">Alle 5 Minuten</option></select></label><button class="button button-secondary" id="refresh-live" type="button">↻ Live-Werte abrufen</button></div></div><div class="live-grid" id="live-values"><div class="empty-state compact"><span class="empty-icon">⌁</span><strong>Noch keine Messwerte ausgewählt</strong><p>Wähle unten die Werte für die Live-Anzeige aus.</p></div></div><div class="selection-list-wrap"><div class="section-bar small"><div><h2>Messwertauswahl</h2><p class="section-description">Wähle hier die Werte für Anzeige und MQTT. Die wichtigsten Einstellungen stehen direkt in der Kachel.</p></div><span class="selection-status" id="live-display-status">0 ausgewählt</span></div><div class="selection-controls"><label class="search-field"><span>⌕</span><input id="live-display-search" type="search" placeholder="Messwert suchen ..."></label><div class="selection-filters" role="group" aria-label="Live-Messwertfilter"><span class="selection-filter-title">Filter</span><label class="selection-filter"><input id="live-filter-discovery" type="checkbox"><span>Discovery vorhanden</span><b id="live-filter-discovery-count">0</b></label><label class="selection-filter"><input id="live-filter-mqtt" type="checkbox"><span>MQTT aktiv</span><b id="live-filter-mqtt-count">0</b></label></div></div><div class="value-list display-value-list" id="display-value-list"><div class="empty-state compact">Noch keine Online-Messwerte geladen.</div></div></div></section>
+
+            <section class="detail-tab-panel" id="detail-panel-history" data-detail-panel="history">
+              <div class="section-bar"><div><p class="overline">Historische Werte</p><h2>Historische Messwerte</h2><p class="section-description">Anzeige-Werte werden im gewählten Zyklus aus GridVis abgefragt. MQTT-aktive Werte werden unabhängig von der geöffneten Seite veröffentlicht.</p></div><div class="live-actions"><label class="live-refresh-control"><span>Standardzyklus</span><select id="history-refresh-interval"><option value="300">Alle 5 Minuten</option><option value="600">Alle 10 Minuten</option><option value="900">Alle 15 Minuten (Standard)</option><option value="1800">Alle 30 Minuten</option><option value="2700">Alle 45 Minuten</option><option value="3600">Jede Stunde</option><option value="7200">Alle 2 Stunden</option><option value="21600">Alle 6 Stunden</option><option value="43200">Alle 12 Stunden</option><option value="86400">Alle 24 Stunden</option></select></label><label class="live-refresh-control history-offset-control"><span>Versatz</span><input id="history-refresh-offset" type="number" min="0" max="59" step="1" value="0" title="Minuten nach dem regulären Zyklusbeginn"></label><button class="button button-secondary" id="refresh-history" type="button">↻ Historische Werte abrufen</button></div></div>
+              <details class="history-defaults" id="history-defaults"><summary>Historische Standardeinstellungen dieses Geräts</summary><div class="history-defaults-grid"><div><span class="history-settings-title">Standard-Zeitbereiche</span><div class="history-range-options" id="history-default-ranges"></div><p class="form-hint">Diese Standardwerte gelten für dieses Gerät. Mehrere Zeitbereiche können gleichzeitig abgerufen werden.</p></div><div><span class="history-settings-title">Aggregation</span><p class="history-default-timebase">GridVis liefert Energie-/Verbrauchswerte als Summe und andere Werte als Durchschnitt. Eine Zeitbasis wird nicht übertragen.</p><div class="history-comparison-settings"><span class="history-settings-title">Vergleichszeiträume</span><div id="history-comparisons" class="history-comparisons"></div><button class="button button-quiet history-comparison-add" id="add-history-comparison" type="button">+ Vergleichszeitraum</button><p class="form-hint">Mehrere Vergleiche können gleichzeitig abgefragt und als eigene MQTT-/HA-Entitäten veröffentlicht werden.</p></div></div></div></details>
+              <div class="live-grid" id="historical-values"><div class="empty-state compact"><span class="empty-icon">⌁</span><strong>Keine historischen Messwerte ausgewählt</strong><p>Wähle unten die verfügbaren historischen Werte aus.</p></div></div>
+              <div class="selection-list-wrap"><div class="section-bar small"><div><h2>Messwertauswahl</h2><p class="section-description">Nur verfügbare historische Werte werden angezeigt. Die wichtigsten Einstellungen stehen direkt in der Kachel.</p></div><span class="selection-status" id="historical-display-status">0 ausgewählt</span></div><div class="selection-controls"><label class="search-field"><span>⌕</span><input id="historical-display-search" type="search" placeholder="Historischen Messwert suchen ..."></label><div class="selection-filters" role="group" aria-label="Historien-Messwertfilter"><span class="selection-filter-title">Filter</span><label class="selection-filter"><input id="historical-filter-discovery" type="checkbox"><span>Discovery vorhanden</span><b id="historical-filter-discovery-count">0</b></label><label class="selection-filter"><input id="historical-filter-mqtt" type="checkbox"><span>MQTT aktiv</span><b id="historical-filter-mqtt-count">0</b></label></div></div><div class="value-list display-value-list" id="historical-value-list"><div class="empty-state compact">Noch keine historischen Messwerte geladen.</div></div></div>
+            </section>
+
+          </section>
+
+          <section class="page-view" id="view-analysis" data-view="analysis"><div class="page-heading"><div><p class="overline">GridVis</p><h1>Messwertanalyse</h1><p class="page-subtitle">Historische Messwerte werden in der Gerätedetailansicht analysiert.</p></div></div><article class="content-panel empty-page"><span class="empty-icon">⌁</span><h2>Gerät für die Analyse auswählen</h2><p>Öffne ein Gerät und wechsle dort auf den Tab „Historie“, um Zeitraum, Raster und Verlauf zu konfigurieren.</p><button class="button button-primary" id="analysis-open-devices" type="button">Geräte öffnen</button></article></section>
+          <section class="page-view" id="view-reports" data-view="reports"><div class="page-heading"><div><p class="overline">GridVis</p><h1>Berichte</h1><p class="page-subtitle">Berichte und Auswertungen werden in einem späteren Ausbauschritt ergänzt.</p></div></div><article class="content-panel empty-page"><span class="empty-icon">▤</span><h2>Berichte kommen später</h2><p>Die lesende REST-Anbindung und historische Einzelabfrage sind bereits vorbereitet.</p></article></section>
+          <section class="page-view" id="view-alarms" data-view="alarms"><div class="page-heading"><div><p class="overline">GridVis</p><h1>Alarme</h1><p class="page-subtitle">Alarm- und Grenzwertüberwachung ist für einen späteren Ausbauschritt vorgesehen.</p></div></div><article class="content-panel empty-page"><span class="empty-icon">△</span><h2>Noch keine Alarme konfiguriert</h2><p>Command-Topics und Schreibfunktionen bleiben im ersten lesenden Ausbauschritt deaktiviert.</p></article></section>
+
+          <section class="page-view" id="view-logbook" data-view="logbook">
+            <div class="page-heading"><div><p class="overline">System</p><h1>Logbuch</h1><p class="page-subtitle">GridVis-Abfragen, MQTT-Veröffentlichungen und Fehler der letzten Aktionen.</p></div></div>
+            <div class="toolbar content-panel logbook-toolbar">
+              <div class="toolbar-group"><label class="field compact-field"><span>Einträge</span><select id="logbook-limit"><option value="500">Letzte 500</option><option value="5000">Letzte 5.000</option></select></label><label class="field compact-field"><span>Stufe</span><select id="logbook-level"><option value="">Alle</option><option value="success">Erfolg</option><option value="info">Info</option><option value="warning">Warnungen</option><option value="error">Fehler</option></select></label><span class="toolbar-status" id="logbook-status">Noch nicht geladen</span></div>
+              <div class="logbook-actions"><label class="search-field"><span>⌕</span><input id="logbook-search" type="search" placeholder="Logbuch durchsuchen ..."></label><button class="button button-secondary" id="logbook-refresh" type="button">↻ Aktualisieren</button><button class="button button-quiet" id="logbook-download" type="button">↓ Download</button><button class="button button-quiet" id="logbook-clear" type="button">Leeren</button></div>
+            </div>
+            <article class="content-panel logbook-panel"><div class="logbook-list" id="logbook-list"><div class="empty-state compact"><span class="empty-icon">☷</span><strong>Noch keine Logbuch-Einträge</strong><p>Die nächsten API- und MQTT-Aktionen werden hier protokolliert.</p></div></div></article>
+          </section>
+
+          <section class="page-view" id="view-settings" data-view="settings">
+            <div class="page-heading"><div><p class="overline">Verwaltung</p><h1>Verbindungen</h1><p class="page-subtitle">GridVis, MQTT-Broker und Discovery-/Topic-Profile zentral konfigurieren.</p></div></div>
+            <div class="settings-columns">
+              <article class="content-panel"><div class="panel-heading"><div><p class="overline">Quelle</p><h2>GridVis verbinden</h2></div></div><form id="gridvis-form" class="settings-form"><label class="field"><span>Aktives GridVis-Projekt</span><select id="project-select" aria-label="GridVis-Projekt"><option value="">Projekt auswählen</option></select></label><p class="form-hint">Das aktive Projekt bestimmt die Geräte- und Messwertauswahl. Zum Wechseln hier das Projekt auswählen.</p><label class="field"><span>GridVis-URL</span><input name="baseUrl" type="url" placeholder="http://gridvis:8080" autocomplete="url"></label><label class="field"><span>Benutzername</span><input name="username" type="text" autocomplete="username"></label><label class="field"><span>Passwort</span><input name="password" type="password" autocomplete="current-password" placeholder="wird nicht angezeigt"></label><label class="profile-default-field"><input id="gridvis-auth-enabled" name="authEnabled" type="checkbox"> GridVis-Authentifizierung verwenden</label><p class="form-hint">Nur aktivieren, wenn GridVis eine Anmeldung verlangt. Ist die Option deaktiviert oder kein Benutzername eingetragen, wird kein Authorization-Header gesendet.</p><p class="form-hint">Die GridVis-Zugangsdaten bleiben im laufenden Prozess und werden nicht in der Oberfläche angezeigt.</p><div class="panel-actions"><button class="button button-secondary" id="gridvis-test" type="button">Verbindung testen</button><button class="button button-quiet" id="gridvis-disconnect" type="button">GridVis trennen</button><button class="button button-primary" type="submit">Speichern und verbinden</button></div></form></article>
+              <article class="content-panel"><div class="panel-heading"><div><p class="overline">MQTT</p><h2>Broker-Verbindungen</h2><p class="panel-copy">Hier werden nur URL und Zugangsdaten des Brokers verwaltet. Topics werden in den Ausgabeprofilen definiert.</p></div><button class="button button-quiet" id="add-mqtt-broker" type="button">+ Broker</button></div><form id="mqtt-form" class="settings-form"><div id="mqtt-brokers-list" class="mqtt-brokers-list"></div><p class="form-hint">Die Anwendung abonniert derzeit keine MQTT-Topics. State-, Availability- und Discovery-Topics sind Veröffentlichungsziele der Profile. Ein Broker kann mehrere Profile bedienen.</p><div class="panel-actions"><button class="button button-primary" type="submit">Broker speichern</button></div></form></article>
+            </div>
+            <div class="connection-sections">
+              <article class="content-panel application-settings-panel"><div class="panel-heading"><div><p class="overline">Anwendung</p><h2>GridVis2MQTT</h2><p class="panel-copy">Diese Adresse wird von Home Assistant für Gerätebilder wie <code>iconURL</code> verwendet. Sie ist unabhängig von der GridVis-Verbindung und muss aus dem Home-Assistant-Netz erreichbar sein.</p></div></div><form id="application-form" class="settings-form"><label class="field"><span>Öffentliche URL von GridVis2MQTT</span><input id="application-public-url" type="url" placeholder="http://gridvis2mqtt:8080" autocomplete="url"></label><p class="form-hint">Die URL wird nur mit diesem eigenen Speichern-Button übertragen. Leer lassen, wenn relative URLs ausreichen.</p><label class="profile-default-field"><input id="application-public-icon-api" type="checkbox"> Icon-API ohne Web-Login freigeben</label><p class="form-hint">Erforderlich, damit Home Assistant die Gerätebilder über <code>iconURL</code> laden kann. Freigegeben werden ausschließlich die beiden Bildrouten.</p><div class="panel-actions"><button class="button button-primary" type="submit">URL und Icon-Freigabe speichern</button></div></form></article>
+              <article class="content-panel output-profiles-panel"><div class="panel-heading"><div><p class="overline">Ausgabevarianten</p><h2>Discovery- und Topic-Profile</h2><p class="panel-copy">Jede Ausgabevariante ist eine eigene Konfiguration. Messwerte können später einem oder mehreren Profilen zugewiesen werden.</p></div><button class="button button-quiet" id="add-mqtt-profile" type="button">+ Profil</button></div><div id="mqtt-profiles-list" class="mqtt-profiles-list"></div><div class="panel-actions"><button class="button button-primary" id="save-mqtt-profiles" type="button">Profile speichern</button></div></article>
+            </div>
+          </section>
+          <section class="page-view" id="view-administration" data-view="administration">
+            <div class="page-heading"><div><p class="overline">Verwaltung</p><h1>Einstellungen</h1><p class="page-subtitle">Profil, Benutzer, Sicherung und Softwarestand der Anwendung verwalten.</p></div></div>
+            <div class="administration-grid">
+              <article class="content-panel administration-panel">
+                <div class="panel-heading"><div><p class="overline">Profil</p><h2>Mein Profil</h2><p class="panel-copy">Ändere deinen Benutzernamen oder dein persönliches Passwort.</p></div></div>
+                <form id="profile-form" class="settings-form">
+                  <label class="field"><span>Benutzername</span><input id="profile-username" name="username" type="text" autocomplete="username" required></label>
+                  <label class="field"><span>Aktuelles Passwort</span><input id="profile-current-password" name="currentPassword" type="password" autocomplete="current-password" required></label>
+                  <label class="field"><span>Neues Passwort <small>(optional)</small></span><input id="profile-new-password" name="password" type="password" minlength="8" autocomplete="new-password"></label>
+                  <label class="field"><span>Neues Passwort wiederholen</span><input id="profile-confirm-password" name="confirmPassword" type="password" minlength="8" autocomplete="new-password"></label>
+                  <p class="form-hint">Für jede Änderung ist das aktuelle Passwort erforderlich. Passwörter müssen mindestens 8 Zeichen lang sein.</p>
+                  <div class="panel-actions"><button class="button button-primary" type="submit">Profil speichern</button></div>
+                  <p class="form-hint" id="profile-status" role="status"></p>
+                </form>
+              </article>
+              <article class="content-panel administration-panel user-management-panel" id="user-management-panel">
+                <div class="panel-heading"><div><p class="overline">Zugriff</p><h2>Benutzerverwaltung</h2><p class="panel-copy">Weitere Benutzer anlegen, Passwörter zurücksetzen oder Konten entfernen.</p></div></div>
+                <div id="auth-user-list" class="auth-user-list"><p class="form-hint">Benutzer werden geladen ...</p></div>
+                <form id="user-create-form" class="settings-form user-create-form">
+                  <div class="user-create-heading"><strong>Benutzer hinzufügen</strong><span class="form-hint">Nur für Administratoren</span></div>
+                  <div class="settings-grid"><label class="field"><span>Benutzername</span><input name="username" type="text" autocomplete="off" required></label><label class="field"><span>Rolle</span><select name="role"><option value="user">Benutzer</option><option value="admin">Administrator</option></select></label></div>
+                  <label class="field"><span>Startpasswort</span><input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+                  <div class="panel-actions"><button class="button button-secondary" type="submit">Benutzer anlegen</button></div>
+                </form>
+              </article>
+            </div>
+            <div class="administration-sections">
+              <article class="content-panel backup-settings-panel"><div class="panel-heading"><div><p class="overline">Sicherung</p><h2>Backup und Restore</h2><p class="panel-copy">Sichert Messwertauswahl, MQTT-Zuordnungen, Zeitbereiche und Anzeigeeinstellungen. Backups enthalten standardmäßig keine Zugangsdaten.</p></div></div><div class="settings-form"><label class="profile-default-field"><input id="backup-include-connections" type="checkbox"> GridVis- und MQTT-Verbindungsdaten einschließen</label><p class="form-hint">Nur aktivieren, wenn das Backup geschützt gespeichert oder übertragen wird. Enthaltene Passwörter werden unverschlüsselt in der JSON-Datei abgelegt.</p><div class="panel-actions"><button class="button button-secondary" id="backup-download" type="button">Backup herunterladen</button><label class="button button-secondary file-button" for="backup-file">Backup auswählen</label><input id="backup-file" type="file" accept="application/json,.json" hidden><button class="button button-primary" id="backup-restore" type="button" disabled>Backup wiederherstellen</button></div><p class="form-hint" id="backup-file-name">Keine Datei ausgewählt.</p></div></article>
+              <article class="content-panel update-settings-panel"><div class="panel-heading"><div><p class="overline">Version</p><h2>Update prüfen</h2><p class="panel-copy">Bei einer Installation aus einem Git-Klon kann hier geprüft werden, ob das konfigurierte Remote neue Commits enthält.</p></div></div><div class="settings-form"><div class="update-status-row"><span>Installierte Version</span><strong id="update-current-version">–</strong></div><p class="form-hint" id="update-status">Noch nicht geprüft.</p><div class="panel-actions"><button class="button button-secondary" id="update-check" type="button">Update prüfen</button></div><p class="form-hint">Das eigentliche Update wird aktuell kontrolliert über <code>update.sh</code> ausgeführt. Sobald ein Git-Remote feststeht, kann der Neustart per Oberfläche ergänzt werden.</p></div></article>
+            </div>
+          </section>
+          <footer class="app-footer"><span>GridVis2MQTT · lesender Betrieb</span><span id="footer-status">Bereit</span></footer>
+        </main>
+      </div>
+    </div>
+    <script src="/app.js?v=0.3.11-1" type="module"></script>
+  </body>
+</html>

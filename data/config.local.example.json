@@ -1,0 +1,53 @@
+{
+  "application": {
+    "publicUrl": "",
+    "publicIconApi": true
+  },
+  "gridvis": {
+    "baseUrl": "http://localhost:8080",
+    "username": "your-gridvis-user",
+    "password": "your-gridvis-password",
+    "authEnabled": false,
+    "project": "",
+    "enabled": true
+  },
+  "mqtt": {
+    "url": "mqtt://localhost:1883",
+    "username": "",
+    "password": "",
+    "topicPrefix": "gridvis",
+    "brokers": [
+      {
+        "id": "default",
+        "name": "Hauptbroker",
+        "url": "mqtt://localhost:1883",
+        "clientId": "gridvis2mqtt",
+        "username": "",
+        "password": "",
+        "enabled": true
+      }
+    ],
+    "defaultProfileId": "homeassistant",
+    "profiles": [
+      {
+        "id": "homeassistant",
+        "name": "Home Assistant",
+        "mode": "homeassistant",
+        "brokerId": "default",
+        "enabled": true,
+        "isDefault": true,
+        "discoveryPrefix": "homeassistant",
+        "component": "sensor",
+        "topicPrefix": "gridvis",
+        "stateTopicTemplate": "{topicPrefix}/{project}/{deviceId}/{valueType}/state",
+        "availabilityTopicTemplate": "{topicPrefix}/{project}/{deviceId}/{valueType}/availability",
+        "discoveryTopicTemplate": "{discoveryPrefix}/{component}/{deviceId}/{valueType}/config"
+      }
+    ]
+  },
+  "discovery": {
+    "enabled": true,
+    "mode": "homeassistant",
+    "prefix": "homeassistant"
+  }
+}
