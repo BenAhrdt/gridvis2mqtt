@@ -87,6 +87,9 @@ const mqttDialogState = {
   deviceSearch: '',
   valueSearch: '',
   initialMeasurementKey: '',
+  openDeviceGroups: new Set(),
+  openMeasurementGroups: new Set(),
+  openMeasurementSubGroups: new Set(),
   loading: false
 };
 
@@ -838,11 +841,23 @@ function mqttDeviceGroupName(device) {
 
 function mqttDeviceIcon(device) {
   const text = `${deviceType(device)} ${deviceName(device)}`.toLocaleLowerCase('de');
-  if (/modbus/.test(text)) return '⌘';
-  if (/digital|\bdi\b|eingang/.test(text)) return '⌁';
-  if (/umg|janitza|messgerät|meter/.test(text)) return '▦';
-  if (/virtu|software|proxmox/.test(text)) return '◌';
-  return '▣';
+  if (/modbus/.test(text)) return 'modbus';
+  if (/digital|\bdi\b|eingang/.test(text)) return 'digital';
+  if (/virtu|software|proxmox/.test(text)) return 'virtual';
+  return 'meter';
+}
+
+function mqttFolderIcon() {
+  return '<svg class="mqtt-tree-icon mqtt-tree-folder-svg" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5v-10a1.5 1.5 0 0 1 1.5-1.5Z"></path></svg>';
+}
+
+function mqttDeviceIconMarkup(device) {
+  const icon = mqttDeviceIcon(device);
+  const extra = icon === 'digital' ? '<path d="M5 12h14M8 8v8M16 8v8"></path>'
+    : icon === 'modbus' ? '<path d="M5 8h14v8H5zM8 5v3M16 5v3M8 16v3M16 16v3"></path>'
+      : icon === 'virtual' ? '<path d="m12 4 7 4v8l-7 4-7-4V8l7-4Z"></path><path d="m8 12 2.5 2.5L16 9"></path>'
+        : '<rect x="5" y="4.5" width="14" height="15" rx="1.5"></rect><path d="M8 8h8M8 12h8M8 16h4"></path>';
+  return `<svg class="mqtt-tree-icon mqtt-tree-device-svg mqtt-tree-device-svg-${icon}" viewBox="0 0 24 24" focusable="false" aria-hidden="true">${extra}</svg>`;
 }
 
 function renderMqttDialogDevices() {
@@ -865,10 +880,14 @@ function renderMqttDialogDevices() {
     list.replaceChildren(...groupEntries.map(([groupName, groupDevices]) => {
       const group = document.createElement('details');
       group.className = 'mqtt-device-group';
-      group.open = true;
+      group.open = mqttDialogState.openDeviceGroups.has(groupName);
+      group.addEventListener('toggle', () => {
+        if (group.open) mqttDialogState.openDeviceGroups.add(groupName);
+        else mqttDialogState.openDeviceGroups.delete(groupName);
+      });
       const selectedCount = groupDevices.filter((device) => mqttDialogState.selectedDeviceIds.has(deviceId(device))).length;
       const summary = document.createElement('summary');
-      summary.innerHTML = `<input class="mqtt-tree-group-check" type="checkbox"${selectedCount === groupDevices.length ? ' checked' : ''}${selectedCount > 0 && selectedCount < groupDevices.length ? ' data-indeterminate="true"' : ''}><span class="mqtt-tree-folder-icon" aria-hidden="true">▰</span><strong>${escapeHtml(groupName)}</strong><small>${groupDevices.length}</small>`;
+      summary.innerHTML = `<span class="mqtt-tree-toggle" aria-hidden="true">▸</span><input class="mqtt-tree-group-check" type="checkbox"${selectedCount === groupDevices.length ? ' checked' : ''}${selectedCount > 0 && selectedCount < groupDevices.length ? ' data-indeterminate="true"' : ''}><span class="mqtt-tree-folder-icon">${mqttFolderIcon()}</span><strong>${escapeHtml(groupName)}</strong><small>${groupDevices.length}</small>`;
       const groupCheckbox = summary.querySelector('input');
       groupCheckbox.indeterminate = selectedCount > 0 && selectedCount < groupDevices.length;
       groupCheckbox.addEventListener('click', (event) => event.stopPropagation());
@@ -888,7 +907,7 @@ function renderMqttDialogDevices() {
         const id = deviceId(device);
         const row = document.createElement('label');
         row.className = 'mqtt-picker-item mqtt-device-item';
-        row.innerHTML = `<input type="checkbox" value="${escapeHtml(id)}"${mqttDialogState.selectedDeviceIds.has(id) ? ' checked' : ''}><span class="mqtt-tree-device-icon" aria-hidden="true">${mqttDeviceIcon(device)}</span><span><strong>${escapeHtml(deviceLeafName(device))}</strong><small>${escapeHtml(deviceName(device))} · ID ${escapeHtml(id)}</small></span>`;
+        row.innerHTML = `<input type="checkbox" value="${escapeHtml(id)}"${mqttDialogState.selectedDeviceIds.has(id) ? ' checked' : ''}><span class="mqtt-tree-device-icon">${mqttDeviceIconMarkup(device)}</span><span><strong>${escapeHtml(deviceLeafName(device))}</strong><small>${escapeHtml(deviceName(device))} · ID ${escapeHtml(id)}</small></span>`;
         row.querySelector('input').addEventListener('change', (event) => {
           if (event.target.checked) mqttDialogState.selectedDeviceIds.add(id);
           else mqttDialogState.selectedDeviceIds.delete(id);
@@ -972,10 +991,14 @@ function renderMqttDialogCommonValues() {
     list.replaceChildren(...sortedGroups.map(([groupName, subGroups]) => {
       const group = document.createElement('details');
       group.className = 'mqtt-measurement-group';
-      group.open = true;
+      group.open = mqttDialogState.openMeasurementGroups.has(groupName);
+      group.addEventListener('toggle', () => {
+        if (group.open) mqttDialogState.openMeasurementGroups.add(groupName);
+        else mqttDialogState.openMeasurementGroups.delete(groupName);
+      });
       const groupCount = [...subGroups.values()].reduce((sum, entries) => sum + entries.length, 0);
       const summary = document.createElement('summary');
-      summary.innerHTML = `<span class="mqtt-tree-toggle" aria-hidden="true">▸</span><span class="mqtt-tree-folder-icon" aria-hidden="true">▰</span><strong>${escapeHtml(groupName)}</strong><small>${groupCount}</small>`;
+      summary.innerHTML = `<span class="mqtt-tree-toggle" aria-hidden="true">▸</span><span class="mqtt-tree-folder-icon">${mqttFolderIcon()}</span><strong>${escapeHtml(groupName)}</strong><small>${groupCount}</small>`;
       group.append(summary);
       const sortedSubGroups = [...subGroups.entries()].sort(([left], [right]) => {
         const order = ['Wirkarbeit', 'Bezogene Wirkarbeit', 'Gelieferte Wirkarbeit', 'Bezogene induktive Blindarbeit', 'Bezogene kapazitive Blindarbeit', 'Blindarbeit'];
@@ -986,9 +1009,14 @@ function renderMqttDialogCommonValues() {
         if (subGroupName) {
           const subGroup = document.createElement('details');
           subGroup.className = 'mqtt-measurement-subgroup';
-          subGroup.open = true;
+          const subGroupKey = `${groupName}:${subGroupName}`;
+          subGroup.open = mqttDialogState.openMeasurementSubGroups.has(subGroupKey);
+          subGroup.addEventListener('toggle', () => {
+            if (subGroup.open) mqttDialogState.openMeasurementSubGroups.add(subGroupKey);
+            else mqttDialogState.openMeasurementSubGroups.delete(subGroupKey);
+          });
           const subSummary = document.createElement('summary');
-          subSummary.innerHTML = `<span class="mqtt-tree-toggle" aria-hidden="true">▸</span><span class="mqtt-tree-folder-icon" aria-hidden="true">▰</span><strong>${escapeHtml(subGroupName)}</strong><small>${entries.length}</small>`;
+          subSummary.innerHTML = `<span class="mqtt-tree-toggle" aria-hidden="true">▸</span><span class="mqtt-tree-folder-icon">${mqttFolderIcon()}</span><strong>${escapeHtml(subGroupName)}</strong><small>${entries.length}</small>`;
           subGroup.append(subSummary);
           subGroup.append(...entries.map((measurement) => renderMqttDialogMeasurementItem(measurement)));
           group.append(subGroup);
@@ -1132,14 +1160,15 @@ function openMqttSelectionDialog({ deviceIdValue = '', mode = 'live', measuremen
   mqttDialogState.tab = 'selection';
   mqttDialogState.selectedDeviceIds = new Set(deviceIdValue && state.devices.some((device) => deviceId(device) === String(deviceIdValue))
     ? [String(deviceIdValue)]
-    : state.currentDevice && state.devices.some((device) => deviceId(device) === deviceId(state.currentDevice))
-      ? [deviceId(state.currentDevice)]
-      : []);
+    : []);
   mqttDialogState.deviceData = new Map();
   mqttDialogState.selectedKeys = new Set();
   mqttDialogState.deviceSearch = '';
   mqttDialogState.valueSearch = '';
   mqttDialogState.initialMeasurementKey = measurementKeyValue;
+  mqttDialogState.openDeviceGroups = new Set();
+  mqttDialogState.openMeasurementGroups = new Set();
+  mqttDialogState.openMeasurementSubGroups = new Set();
   $('#mqtt-dialog-kind').value = mqttDialogState.mode;
   $('#mqtt-dialog-device-search').value = '';
   $('#mqtt-dialog-value-search').value = '';

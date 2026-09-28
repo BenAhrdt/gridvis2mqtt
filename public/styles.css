@@ -2518,6 +2518,34 @@ body {
   font-size: 13px;
   text-align: center;
 }
+.mqtt-tree-icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+  margin: 0 auto;
+}
+.mqtt-tree-folder-svg {
+  fill: currentColor;
+}
+.mqtt-tree-device-svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+.mqtt-tree-device-svg-meter {
+  color: #365b7d;
+}
+.mqtt-tree-device-svg-modbus {
+  color: #697789;
+}
+.mqtt-tree-device-svg-digital {
+  color: #5d7187;
+}
+.mqtt-tree-device-svg-virtual {
+  color: #7667a5;
+}
 .mqtt-device-group-items .mqtt-device-item {
   padding-left: 28px;
 }
