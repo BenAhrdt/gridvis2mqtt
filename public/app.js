@@ -888,7 +888,7 @@ function mqttDeviceIconMarkup(device) {
   const extra = icon === 'digital' ? '<path d="M5 12h14M8 8v8M16 8v8"></path>'
     : icon === 'modbus' ? '<path d="M5 8h14v8H5zM8 5v3M16 5v3M8 16v3M16 16v3"></path>'
       : icon === 'virtual' ? '<path d="m12 4 7 4v8l-7 4-7-4V8l7-4Z"></path><path d="m8 12 2.5 2.5L16 9"></path>'
-        : '<rect x="5" y="4.5" width="14" height="15" rx="1.5"></rect><path d="M8 8h8M8 12h8M8 16h4"></path>';
+        : '<rect class="mqtt-meter-body" x="3" y="5" width="18" height="13" rx="1.5"></rect><path class="mqtt-meter-detail" d="M7 9h10M7 13h6"></path><path class="mqtt-meter-terminal" d="M7 18v2M17 18v2"></path>';
   return `<svg class="mqtt-tree-icon mqtt-tree-device-svg mqtt-tree-device-svg-${icon}" viewBox="0 0 24 24" focusable="false" aria-hidden="true">${extra}</svg>`;
 }
 
@@ -1849,7 +1849,7 @@ function deviceName(device) {
 
 function deviceLeafName(device) {
   const name = deviceName(device);
-  const parts = name.split('/').map((part) => part.trim()).filter(Boolean);
+  const parts = name.split(/[\\/]/).map((part) => part.trim()).filter(Boolean);
   return parts.at(-1) || name;
 }
 
