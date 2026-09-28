@@ -1371,6 +1371,47 @@ function updateMqttDialogAdvanced() {
   }
 }
 
+function initializeMqttDialogExistingSettings() {
+  const measurementKeyValue = mqttDialogState.initialMeasurementKey;
+  const deviceIdValue = [...mqttDialogState.selectedDeviceIds][0];
+  if (!measurementKeyValue || !deviceIdValue) return false;
+  const data = mqttDialogState.deviceData.get(deviceIdValue);
+  if (!data) return false;
+  const cache = data.cache || {};
+  const historicalSettings = cache.historicalSettings?.[measurementKeyValue] || {};
+  const historicalDefaults = cache.historicalDefaults || state.historicalGlobalSettings || {};
+  const historicalAssignments = cache.historicalMqttAssignments?.[measurementKeyValue];
+  const liveAssignments = cache.mqttAssignments?.[measurementKeyValue];
+  const selectedModes = mqttDialogSelectedModes();
+  const profileIds = selectedModes.includes('historical') && Array.isArray(historicalAssignments)
+    ? historicalAssignments
+    : Array.isArray(liveAssignments) ? liveAssignments : historicalAssignments;
+  const profileSelect = $('#mqtt-dialog-profile');
+  if (profileSelect && Array.isArray(profileIds) && profileIds[0]
+    && [...profileSelect.options].some((option) => option.value === profileIds[0])) {
+    profileSelect.value = profileIds[0];
+  }
+
+  const interval = historicalSettings.interval || historicalDefaults.refreshInterval;
+  const historyInterval = $('#mqtt-dialog-history-interval');
+  if (historyInterval && interval) historyInterval.value = String(normalizeHistoryRefreshInterval(interval));
+  const ranges = historicalSettings.ranges || historicalDefaults.ranges || ['today'];
+  renderHistoryRangeOptions($('#mqtt-dialog-history-ranges'), ranges, 'mqtt-dialog-history-range');
+  const comparisons = historicalSettings.comparisons ?? historicalDefaults.comparisons ?? [];
+  renderHistoryComparisons($('#mqtt-dialog-history-comparisons'), comparisons);
+  const retain = selectedModes.includes('historical')
+    ? cache.historicalRetainAssignments?.[measurementKeyValue] === true
+    : cache.mqttRetainAssignments?.[measurementKeyValue] === true;
+  const retainInput = $('#mqtt-dialog-retain');
+  if (retainInput) retainInput.checked = retain;
+  const liveInterval = Number(state.deviceRefreshIntervals[cacheKey($('#project-select')?.value || '', deviceIdValue)]) || 0;
+  const liveIntervalInput = $('#mqtt-dialog-live-interval');
+  if (liveIntervalInput && liveInterval) liveIntervalInput.value = String(liveInterval);
+  mqttDialogState.historySettingsTouched = false;
+  mqttDialogState.initialMeasurementKey = '';
+  return true;
+}
+
 function updateMqttDialogStatus() {
   const devices = mqttDialogState.selectedDeviceIds.size;
   const values = mqttDialogSelectedMeasurements().length;
@@ -1465,7 +1506,7 @@ async function refreshMqttDialogData() {
     if (mqttDialogState.initialMeasurementKey
       && mqttDialogAvailableMeasurements().some((measurement) => measurementKey(measurement) === mqttDialogState.initialMeasurementKey)) {
       mqttDialogState.selectedKeys.add(mqttDialogState.initialMeasurementKey);
-      mqttDialogState.initialMeasurementKey = '';
+      initializeMqttDialogExistingSettings();
     }
   } finally {
     if (requestToken !== mqttDialogState.dataRequestToken) return;
