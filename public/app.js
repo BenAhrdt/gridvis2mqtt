@@ -860,6 +860,19 @@ function mqttDialogAvailableMeasurements() {
   return [...measurements.values()].sort((left, right) => measurementDisplayName(left).localeCompare(measurementDisplayName(right), 'de', { numeric: true, sensitivity: 'base' }));
 }
 
+function mqttDialogKnownMeasurements() {
+  const measurements = new Map();
+  for (const mode of ['live', 'historical']) {
+    const values = mqttDialogAvailableMeasurementsForMode(mode, {
+      recordedOnly: mode === 'historical' && $('#mqtt-dialog-recorded')?.checked === true
+    });
+    for (const measurement of values) {
+      if (!measurements.has(measurementKey(measurement))) measurements.set(measurementKey(measurement), measurement);
+    }
+  }
+  return [...measurements.values()].sort((left, right) => measurementDisplayName(left).localeCompare(measurementDisplayName(right), 'de', { numeric: true, sensitivity: 'base' }));
+}
+
 function mqttDialogMeasurementAvailabilityMap() {
   return {
     live: new Set(mqttDialogAvailableMeasurementsForMode('live').map((measurement) => measurementKey(measurement))),
@@ -888,7 +901,15 @@ function mqttDialogExistingMeasurementState(key, availability = mqttDialogMeasur
 
 function mqttDialogSelectedMeasurements() {
   const selectedKeys = new Set(mqttDialogSelectedMeasurementKeys());
-  return mqttDialogAvailableMeasurements().filter((measurement) => selectedKeys.has(measurementKey(measurement)));
+  return mqttDialogKnownMeasurements().filter((measurement) => selectedKeys.has(measurementKey(measurement)));
+}
+
+function mqttDialogConfigurableMeasurements() {
+  const availability = mqttDialogMeasurementAvailabilityMap();
+  return mqttDialogSelectedMeasurements().filter((measurement) => {
+    const key = measurementKey(measurement);
+    return mqttDialogSelectedModes().some((mode) => availability[mode].has(key));
+  });
 }
 
 function mqttDeviceGroupName(device) {
@@ -1212,9 +1233,9 @@ function renderMqttDialogCommonValues() {
   const list = $('#mqtt-dialog-common-values');
   if (!list) return;
   const values = mqttDialogAvailableMeasurements();
-  const commonKeys = new Set(values.map((measurement) => measurementKey(measurement)));
+  const knownKeys = new Set(mqttDialogKnownMeasurements().map((measurement) => measurementKey(measurement)));
   for (const key of [...mqttDialogState.selectedKeys]) {
-    if (!commonKeys.has(key)) mqttDialogState.selectedKeys.delete(key);
+    if (!knownKeys.has(key)) mqttDialogState.selectedKeys.delete(key);
   }
   const query = mqttDialogState.valueSearch.trim().toLocaleLowerCase('de');
   const filtered = values.filter((measurement) => !query || `${measurementDisplayName(measurement)} ${measurement.value} ${measurement.type} ${measurement.typeLabel}`.toLocaleLowerCase('de').includes(query));
@@ -1223,7 +1244,8 @@ function renderMqttDialogCommonValues() {
   } else if (mqttDialogState.loading && mqttDialogDataPending()) {
     list.innerHTML = '<div class="mqtt-picker-empty">Messwertdefinitionen werden geladen …</div>';
   } else if (!filtered.length) {
-    list.innerHTML = '<div class="mqtt-picker-empty">Keine gemeinsamen Messwerte gefunden.</div>';
+    const onlyHistorical = mqttDialogSelectedModes().length === 1 && mqttDialogSelectedModes()[0] === 'historical';
+    list.innerHTML = `<div class="mqtt-picker-empty">${onlyHistorical ? 'Keine historischen gemeinsamen Messwerte verfügbar.' : 'Keine gemeinsamen Messwerte gefunden.'}</div>`;
   } else {
     const availabilityMap = mqttDialogMeasurementAvailabilityMap();
     const groups = new Map();
@@ -1298,8 +1320,13 @@ function renderMqttDialogSelectedValues() {
       row.className = 'mqtt-picker-selected-item';
       const key = measurementKey(measurement);
       const availability = mqttDialogMeasurementAvailability(key);
-      const selectedModeLabels = mqttDialogSelectedModes().filter((mode) => availability[mode]).map(mqttDialogModeLabel).join(' und ');
-      row.innerHTML = `<div><strong>${escapeHtml(measurementDisplayName(measurement))}</strong><small>${escapeHtml(measurement.value)} · ${escapeHtml(measurement.typeLabel || measurement.type)}${measurement.unit ? ` · ${escapeHtml(measurement.unit)}` : ''}</small><span class="mqtt-selected-mode-badge">${escapeHtml(selectedModeLabels)} wird gespeichert</span></div><button type="button" data-mqtt-selected-remove aria-label="${escapeHtml(measurementDisplayName(measurement))} entfernen">×</button>`;
+      const selectedModeLabels = mqttDialogSelectedModes().filter((mode) => availability[mode]).map(mqttDialogModeLabel);
+      const unavailableModeLabels = mqttDialogSelectedModes().filter((mode) => !availability[mode]).map(mqttDialogModeLabel);
+      const modeStatus = [
+        selectedModeLabels.length ? `${selectedModeLabels.join(' und ')} wird gespeichert` : '',
+        unavailableModeLabels.length ? `${unavailableModeLabels.join(' und ')} nicht verfügbar` : ''
+      ].filter(Boolean).join(' · ');
+      row.innerHTML = `<div><strong>${escapeHtml(measurementDisplayName(measurement))}</strong><small>${escapeHtml(measurement.value)} · ${escapeHtml(measurement.typeLabel || measurement.type)}${measurement.unit ? ` · ${escapeHtml(measurement.unit)}` : ''}</small><span class="mqtt-selected-mode-badge${selectedModeLabels.length ? '' : ' unavailable'}">${escapeHtml(modeStatus)}</span></div><button type="button" data-mqtt-selected-remove aria-label="${escapeHtml(measurementDisplayName(measurement))} entfernen">×</button>`;
       row.querySelector('[data-mqtt-selected-remove]').addEventListener('click', () => {
         mqttDialogState.selectedKeys.delete(key);
         renderMqttDialogCommonValues();
@@ -1345,13 +1372,16 @@ function updateMqttDialogAdvanced() {
 function updateMqttDialogStatus() {
   const devices = mqttDialogState.selectedDeviceIds.size;
   const values = mqttDialogSelectedMeasurements().length;
+  const configurable = mqttDialogConfigurableMeasurements().length;
   const modes = mqttDialogSelectedModes();
   const modeText = modes.length ? mqttDialogSelectedModeLabel() : 'keine Messwertart';
-  setText('#mqtt-dialog-status', devices && values
+  setText('#mqtt-dialog-status', devices && values && configurable
     ? `${devices} ${devices === 1 ? 'Gerät' : 'Geräte'} · ${values} ${values === 1 ? 'Messwert' : 'Messwerte'} · ${modeText} wird auf alle ausgewählten Geräte angewendet.`
-    : modes.length ? 'Noch keine Geräte und Messwerte ausgewählt.' : 'Bitte mindestens Live oder Historie auswählen.');
+    : values && !configurable
+      ? 'Keine der ausgewählten Messwerte ist für die gewählte Messwertart verfügbar.'
+      : modes.length ? 'Noch keine Geräte und Messwerte ausgewählt.' : 'Bitte mindestens Live oder Historie auswählen.');
   const save = $('#mqtt-selection-save');
-  if (save) save.disabled = !modes.length || !devices || !values || mqttDialogState.loading;
+  if (save) save.disabled = !modes.length || !devices || !configurable || mqttDialogState.loading;
 }
 
 function setMqttDialogTab(tab) {
@@ -1512,12 +1542,13 @@ async function saveMqttSelection() {
   const project = $('#project-select')?.value || '';
   const ids = [...mqttDialogState.selectedDeviceIds];
   const measurements = mqttDialogSelectedMeasurements();
+  const configurableMeasurements = mqttDialogConfigurableMeasurements();
   const modes = mqttDialogSelectedModes();
   if (!modes.length) {
     showToast('Bitte Live und/oder Historie auswählen.', 'warning');
     return;
   }
-  if (!project || !ids.length || !measurements.length) {
+  if (!project || !ids.length || !measurements.length || !configurableMeasurements.length) {
     showToast('Bitte mindestens ein Gerät und einen Messwert auswählen.', 'warning');
     return;
   }

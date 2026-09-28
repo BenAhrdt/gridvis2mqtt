@@ -2694,6 +2694,22 @@ body {
   color: var(--muted);
   font-size: 9px;
 }
+.mqtt-selected-mode-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 5px;
+  border: 1px solid #b7dcd9;
+  border-radius: 3px;
+  color: #376b78;
+  background: #edf8f6;
+  font-size: 8px;
+  font-weight: 700;
+}
+.mqtt-selected-mode-badge.unavailable {
+  border-color: #ead8ad;
+  color: #80652e;
+  background: #fff8e7;
+}
 .mqtt-value-status {
   display: flex;
   flex-wrap: wrap;
