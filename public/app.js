@@ -769,8 +769,7 @@ function mqttOverviewRangeMarkup(row) {
   if (row.mode !== 'historical') return `<span class="mqtt-cycle-label">${escapeHtml(mqttOverviewCycleLabel(row.cycle, row.mode))}</span>`;
   const ranges = Array.isArray(row.ranges) ? row.ranges : [];
   const values = row.values && typeof row.values === 'object' ? row.values : {};
-  const chips = ranges.slice(0, 4).map((range) => `<span class="mqtt-range-chip"><strong>${escapeHtml(historyRangeLabel(range))}</strong><em>${escapeHtml(mqttOverviewValue(values[range], row.unit))}</em></span>`);
-  if (ranges.length > 4) chips.push(`<span class="mqtt-range-more">+${ranges.length - 4} weitere</span>`);
+  const chips = ranges.map((range) => `<span class="mqtt-range-chip"><strong>${escapeHtml(historyRangeLabel(range))}</strong><em>${escapeHtml(mqttOverviewValue(values[range], row.unit))}</em></span>`);
   return `<div class="mqtt-range-cell">${chips.join('') || '<span class="mqtt-cycle-label">Keine Zeitbereiche</span>'}<small>${escapeHtml(mqttOverviewCycleLabel(row.cycle, row.mode))}</small></div>`;
 }
 
