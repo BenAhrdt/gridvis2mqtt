@@ -93,7 +93,8 @@ const mqttDialogState = {
   openMeasurementSubGroups: new Set(),
   loading: false,
   dataRequestToken: 0,
-  historySettingsTouched: false
+  historySettingsTouched: false,
+  displaySettingsTouched: { unit: false, decimals: false }
 };
 
 const viewLabels = {
@@ -1450,6 +1451,102 @@ function renderMqttDialogSelectedValues() {
     }));
   }
   setText('#mqtt-dialog-selected-count', `${selected.length} ausgewählt`);
+  updateMqttDialogDisplaySettings();
+}
+
+const MQTT_DISPLAY_UNCHANGED = '__unchanged__';
+const MQTT_DISPLAY_MIXED = '__mixed__';
+const MQTT_DISPLAY_STANDARD = '__standard__';
+
+function mqttDialogDisplayEntries() {
+  const selected = mqttDialogSelectedMeasurements();
+  const entries = [];
+  for (const id of mqttDialogState.selectedDeviceIds) {
+    const data = mqttDialogState.deviceData.get(id);
+    if (!data) continue;
+    for (const measurement of selected) {
+      const current = data.live.find((item) => measurementKey(item) === measurementKey(measurement))
+        || data.historical.find((item) => measurementKey(item) === measurementKey(measurement));
+      if (!current) continue;
+      const settings = normalizeDisplaySettings(data.cache?.displaySettings?.[measurementKey(current)], current);
+      entries.push({
+        measurement: current,
+        unit: settings.unit || MQTT_DISPLAY_STANDARD,
+        decimals: settings.decimals === undefined ? MQTT_DISPLAY_STANDARD : String(settings.decimals)
+      });
+    }
+  }
+  return entries;
+}
+
+function mqttDialogCommonDisplayUnits(measurements) {
+  if (!measurements.length) return [];
+  let common = new Set(measurementDisplayUnits(measurements[0]));
+  for (const measurement of measurements.slice(1)) {
+    const available = new Set(measurementDisplayUnits(measurement));
+    common = new Set([...common].filter((unit) => available.has(unit)));
+  }
+  return [...common];
+}
+
+function mqttDialogAggregateDisplayValue(entries, field) {
+  if (!entries.length) return MQTT_DISPLAY_UNCHANGED;
+  const values = new Set(entries.map((entry) => entry[field]));
+  return values.size === 1 ? [...values][0] : MQTT_DISPLAY_MIXED;
+}
+
+function mqttDialogReplaceDisplaySelect(select, options, value) {
+  if (!select) return;
+  const selectedValue = options.some((option) => option.value === value) ? value : MQTT_DISPLAY_UNCHANGED;
+  select.replaceChildren(...options.map((option) => {
+    const element = new Option(option.label, option.value, false, option.value === selectedValue);
+    element.disabled = option.disabled === true;
+    return element;
+  }));
+  select.value = selectedValue;
+}
+
+function updateMqttDialogDisplaySettings() {
+  const unitSelect = $('#mqtt-dialog-display-unit');
+  const decimalsSelect = $('#mqtt-dialog-display-decimals');
+  const selected = mqttDialogSelectedMeasurements();
+  const entries = mqttDialogDisplayEntries();
+  const touched = mqttDialogState.displaySettingsTouched;
+  setText('#mqtt-dialog-display-count', `${selected.length} Messwerte ausgewählt`);
+  if (!selected.length || !entries.length) {
+    mqttDialogReplaceDisplaySelect(unitSelect, [{ value: MQTT_DISPLAY_UNCHANGED, label: 'Unverändert' }], MQTT_DISPLAY_UNCHANGED);
+    mqttDialogReplaceDisplaySelect(decimalsSelect, [{ value: MQTT_DISPLAY_UNCHANGED, label: 'Unverändert' }], MQTT_DISPLAY_UNCHANGED);
+    if (unitSelect) unitSelect.disabled = true;
+    if (decimalsSelect) decimalsSelect.disabled = true;
+    setText('#mqtt-dialog-display-hint', 'Messwerte auswählen, um gemeinsame Anzeigeeinstellungen zu bearbeiten.');
+    return;
+  }
+  const unitValue = mqttDialogAggregateDisplayValue(entries, 'unit');
+  const decimalsValue = mqttDialogAggregateDisplayValue(entries, 'decimals');
+  const commonUnits = mqttDialogCommonDisplayUnits(selected);
+  const unitOptions = [
+    { value: MQTT_DISPLAY_UNCHANGED, label: 'Unverändert' },
+    ...(unitValue === MQTT_DISPLAY_MIXED ? [{ value: MQTT_DISPLAY_MIXED, label: 'Unterschiedlich', disabled: true }] : []),
+    { value: MQTT_DISPLAY_STANDARD, label: 'Standard je Messwert' },
+    { value: 'api', label: 'API-Einheit je Messwert' },
+    ...commonUnits.map((unit) => ({ value: unit, label: unit }))
+  ];
+  const decimalOptions = [
+    { value: MQTT_DISPLAY_UNCHANGED, label: 'Unverändert' },
+    ...(decimalsValue === MQTT_DISPLAY_MIXED ? [{ value: MQTT_DISPLAY_MIXED, label: 'Unterschiedlich', disabled: true }] : []),
+    { value: MQTT_DISPLAY_STANDARD, label: 'Standard je Messwert' },
+    ...Array.from({ length: 7 }, (_, count) => ({ value: String(count), label: `${count} Nachkommastellen` }))
+  ];
+  const currentUnitValue = touched.unit ? unitSelect?.value || MQTT_DISPLAY_UNCHANGED : unitValue;
+  const currentDecimalsValue = touched.decimals ? decimalsSelect?.value || MQTT_DISPLAY_UNCHANGED : decimalsValue;
+  mqttDialogReplaceDisplaySelect(unitSelect, unitOptions, currentUnitValue);
+  mqttDialogReplaceDisplaySelect(decimalsSelect, decimalOptions, currentDecimalsValue);
+  if (unitSelect) unitSelect.disabled = false;
+  if (decimalsSelect) decimalsSelect.disabled = false;
+  const compatible = commonUnits.length > 0;
+  setText('#mqtt-dialog-display-hint', compatible
+    ? 'Die Einstellung gilt für alle ausgewählten Geräte und Messwerte. MQTT bleibt unverändert.'
+    : 'Die ausgewählten Messwerte haben keine gemeinsame Anzeigeeinheit. Standard und API-Einheit sind weiterhin möglich.');
 }
 
 function updateMqttDialogAdvanced() {
@@ -1480,6 +1577,7 @@ function updateMqttDialogAdvanced() {
   if (historyComparisons && !historyComparisons.children.length) {
     renderHistoryComparisons(historyComparisons, []);
   }
+  updateMqttDialogDisplaySettings();
 }
 
 function initializeMqttDialogExistingSettings() {
@@ -1658,6 +1756,7 @@ function openMqttSelectionDialog({ deviceIdValue = '', mode = 'live', measuremen
   mqttDialogState.openMeasurementGroups = new Set();
   mqttDialogState.openMeasurementSubGroups = new Set();
   mqttDialogState.historySettingsTouched = false;
+  mqttDialogState.displaySettingsTouched = { unit: false, decimals: false };
   $('#mqtt-dialog-mode-live').checked = initialMode === 'live';
   $('#mqtt-dialog-mode-historical').checked = initialMode === 'historical';
   $('#mqtt-dialog-device-search').value = '';
@@ -1736,8 +1835,15 @@ async function saveMqttSelection() {
   const historyInterval = normalizeHistoryRefreshInterval($('#mqtt-dialog-history-interval').value);
   const historyRanges = selectedHistoryRanges($('#mqtt-dialog-history-ranges'));
   const historyComparisons = normalizeHistoryComparisons(selectedHistoryComparisons($('#mqtt-dialog-history-comparisons')));
+  const displayUnitSelection = $('#mqtt-dialog-display-unit')?.value || MQTT_DISPLAY_UNCHANGED;
+  const displayDecimalsSelection = $('#mqtt-dialog-display-decimals')?.value || MQTT_DISPLAY_UNCHANGED;
+  const displayUnitTouched = mqttDialogState.displaySettingsTouched.unit
+    && ![MQTT_DISPLAY_UNCHANGED, MQTT_DISPLAY_MIXED].includes(displayUnitSelection);
+  const displayDecimalsTouched = mqttDialogState.displaySettingsTouched.decimals
+    && ![MQTT_DISPLAY_UNCHANGED, MQTT_DISPLAY_MIXED].includes(displayDecimalsSelection);
   let saved = 0;
   const savedByMode = { live: 0, historical: 0 };
+  let displaySaved = 0;
   let skipped = 0;
   let unavailable = 0;
   const savedCaches = new Map();
@@ -1746,6 +1852,31 @@ async function saveMqttSelection() {
       const data = await loadMqttDialogDeviceData(state.devices.find((device) => deviceId(device) === id));
       const cache = structuredClone(data.cache || {});
       let changed = false;
+      if (displayUnitTouched || displayDecimalsTouched) {
+        cache.displaySettings = { ...(cache.displaySettings || {}) };
+        for (const selected of measurements) {
+          const measurement = data.live.find((item) => measurementKey(item) === measurementKey(selected))
+            || data.historical.find((item) => measurementKey(item) === measurementKey(selected));
+          if (!measurement) continue;
+          const key = measurementKey(measurement);
+          const current = normalizeDisplaySettings(cache.displaySettings[key], measurement);
+          const next = { ...current };
+          if (displayUnitTouched) {
+            if (displayUnitSelection === MQTT_DISPLAY_STANDARD) delete next.unit;
+            else if (displayUnitSelection === 'api' || measurementDisplayUnits(measurement).includes(displayUnitSelection)) next.unit = displayUnitSelection;
+          }
+          if (displayDecimalsTouched) {
+            if (displayDecimalsSelection === MQTT_DISPLAY_STANDARD) delete next.decimals;
+            else next.decimals = Number(displayDecimalsSelection);
+          }
+          const normalized = normalizeDisplaySettings(next, measurement);
+          if (JSON.stringify(current) === JSON.stringify(normalized)) continue;
+          if (Object.keys(normalized).length) cache.displaySettings[key] = normalized;
+          else delete cache.displaySettings[key];
+          changed = true;
+          displaySaved += 1;
+        }
+      }
       for (const mode of modes) {
         const historical = mode === 'historical';
         const available = historical ? data.historical : data.live;
@@ -1822,12 +1953,13 @@ async function saveMqttSelection() {
     closeMqttSelectionDialog();
     await loadMqttOverview({ silent: true });
     const details = [
-      `${saved} ${saved === 1 ? 'Zuordnung' : 'Zuordnungen'} gespeichert`,
+      saved ? `${saved} ${saved === 1 ? 'Zuordnung' : 'Zuordnungen'} gespeichert` : '',
       savedByMode.live ? `Live: ${savedByMode.live}` : '',
       savedByMode.historical ? `Historie: ${savedByMode.historical}` : '',
+      displaySaved ? `Anzeige: ${displaySaved} ${displaySaved === 1 ? 'Messwert' : 'Messwerte'} angepasst` : '',
       skipped ? `${skipped} bereits vorhanden` : '',
       unavailable ? `${unavailable} in der gewählten Art nicht verfügbar` : ''
-    ].filter(Boolean).join(', ');
+    ].filter(Boolean).join(', ') || 'Keine Änderungen erforderlich';
     const message = `${details}.`;
     showToast(message, 'success');
   } catch (error) {
@@ -6625,6 +6757,14 @@ function attachEvents() {
   });
   $('#mqtt-dialog-history-ranges')?.addEventListener('change', () => {
     mqttDialogState.historySettingsTouched = true;
+  });
+  $('#mqtt-dialog-display-unit')?.addEventListener('change', () => {
+    mqttDialogState.displaySettingsTouched.unit = true;
+    updateMqttDialogDisplaySettings();
+  });
+  $('#mqtt-dialog-display-decimals')?.addEventListener('change', () => {
+    mqttDialogState.displaySettingsTouched.decimals = true;
+    updateMqttDialogDisplaySettings();
   });
   $('#add-mqtt-dialog-history-comparison')?.addEventListener('click', () => {
     mqttDialogState.historySettingsTouched = true;
