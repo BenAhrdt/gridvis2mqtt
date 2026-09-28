@@ -865,10 +865,9 @@ function mqttDialogMeasurementAvailability(key, availability = mqttDialogMeasure
   return { live: availability.live.has(key), historical: availability.historical.has(key) };
 }
 
-function mqttDialogExistingMeasurementState(key) {
+function mqttDialogExistingMeasurementState(key, availability = mqttDialogMeasurementAvailabilityMap()) {
   const ids = [...mqttDialogState.selectedDeviceIds];
-  const availability = mqttDialogMeasurementAvailability(key);
-  const applicableModes = mqttDialogSelectedModes().filter((mode) => availability[mode]);
+  const applicableModes = mqttDialogSelectedModes().filter((mode) => availability[mode].has(key));
   const configuredModes = applicableModes.filter((mode) => {
     const field = mode === 'historical' ? 'historicalMqttAssignments' : 'mqttAssignments';
     return ids.length > 0 && ids.every((id) => {
@@ -1183,7 +1182,7 @@ function mqttMeasurementGroup(measurement) {
 function renderMqttDialogMeasurementItem(measurement, availabilityMap) {
   const key = measurementKey(measurement);
   const availability = mqttDialogMeasurementAvailability(key, availabilityMap);
-  const existing = mqttDialogExistingMeasurementState(key);
+  const existing = mqttDialogExistingMeasurementState(key, availabilityMap);
   const availabilityMarkup = `<span class="mqtt-value-availability"><span class="mqtt-availability-badge${availability.live ? ' available' : ''}">Live${availability.live ? ' verfügbar' : ' –'}</span><span class="mqtt-availability-badge${availability.historical ? ' available' : ''}">Historie${availability.historical ? ' verfügbar' : ' –'}</span></span>`;
   const existingMarkup = existing.configured
     ? `<span class="mqtt-existing-badge">${existing.all ? 'Bereits konfiguriert' : `${existing.configured}/${existing.total} Arten konfiguriert`}</span>`
