@@ -1058,8 +1058,10 @@ function mqttOverviewRows(snapshot = {}, project = '') {
 
   return rows.sort((left, right) => (
     left.deviceName.localeCompare(right.deviceName, 'de', { numeric: true, sensitivity: 'base' })
-    || left.mode.localeCompare(right.mode)
     || left.name.localeCompare(right.name, 'de', { numeric: true, sensitivity: 'base' })
+    || left.value.localeCompare(right.value, 'de', { numeric: true, sensitivity: 'base' })
+    || left.type.localeCompare(right.type, 'de', { numeric: true, sensitivity: 'base' })
+    || left.mode.localeCompare(right.mode)
   ));
 }
 
