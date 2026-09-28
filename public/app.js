@@ -1161,7 +1161,7 @@ function renderMqttDialogMeasurementItem(measurement, availabilityMap) {
   const key = measurementKey(measurement);
   const availability = mqttDialogMeasurementAvailability(key, availabilityMap);
   const existing = mqttDialogExistingMeasurementState(key);
-  const availabilityMarkup = `<span class="mqtt-value-availability"><span class="mqtt-availability-badge${availability.live ? ' available' : ''}">Live${availability.live ? '' : ' –'}</span><span class="mqtt-availability-badge${availability.historical ? ' available' : ''}">Historie${availability.historical ? '' : ' –'}</span></span>`;
+  const availabilityMarkup = `<span class="mqtt-value-availability"><span class="mqtt-availability-badge${availability.live ? ' available' : ''}">Live${availability.live ? ' verfügbar' : ' –'}</span><span class="mqtt-availability-badge${availability.historical ? ' available' : ''}">Historie${availability.historical ? ' verfügbar' : ' –'}</span></span>`;
   const existingMarkup = existing.configured
     ? `<span class="mqtt-existing-badge">${existing.all ? 'Bereits konfiguriert' : `${existing.configured}/${existing.total} bereits konfiguriert`}</span>`
     : '';
@@ -1257,6 +1257,8 @@ function renderMqttDialogCommonValues() {
 function renderMqttDialogSelectedValues() {
   const list = $('#mqtt-dialog-selected-values');
   if (!list) return;
+  const modeLabel = mqttDialogState.mode === 'historical' ? 'historische Messwerte' : 'Live-Messwerte';
+  setText('#mqtt-dialog-selected-mode', `Werden als ${modeLabel} gespeichert`);
   const selected = mqttDialogSelectedMeasurements();
   if (!selected.length) {
     list.innerHTML = '<div class="mqtt-picker-empty">Noch keine Messwerte ausgewählt.</div>';
@@ -1283,8 +1285,8 @@ function updateMqttDialogAdvanced() {
   const historySettings = $('#mqtt-dialog-history-settings');
   const liveSettings = $('#mqtt-dialog-live-settings');
   const recorded = $('.mqtt-dialog-recorded');
-  if (historySettings) historySettings.hidden = false;
-  if (liveSettings) liveSettings.hidden = false;
+  if (historySettings) historySettings.hidden = !historical;
+  if (liveSettings) liveSettings.hidden = historical;
   if (recorded) recorded.hidden = !historical;
   const profileSelect = $('#mqtt-dialog-profile');
   if (profileSelect && !profileSelect.options.length) {

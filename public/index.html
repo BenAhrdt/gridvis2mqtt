@@ -149,15 +149,15 @@
             </nav>
             <section class="mqtt-dialog-panel active" id="mqtt-dialog-selection-panel" data-mqtt-dialog-panel="selection">
               <div class="mqtt-dialog-mode-row">
-                <label class="field"><span>Messwertart für die Auswahl</span><select id="mqtt-dialog-kind"><option value="live">Live-Messwerte</option><option value="historical">Historische Messwerte</option></select></label>
+                <label class="field"><span>Zu konfigurierende Messwertart</span><select id="mqtt-dialog-kind"><option value="live">Live-Messwerte</option><option value="historical">Historische Messwerte</option></select></label>
                 <label class="mqtt-dialog-recorded"><input id="mqtt-dialog-recorded" type="checkbox"> Nur aufgezeichnete Werte</label>
-                <span class="mqtt-dialog-mode-hint">Die mittlere Liste zeigt gemeinsame Werte der gewählten Messwertart. Live- und Historienverfügbarkeit wird am Messwert markiert.</span>
+                <span class="mqtt-dialog-mode-hint">Nur die gewählte Messwertart wird gespeichert. Die Chips zeigen zusätzlich, ob der Wert auch für die andere Art verfügbar ist.</span>
                 <span class="mqtt-dialog-loading" id="mqtt-dialog-loading" role="status"></span>
               </div>
               <div class="mqtt-picker-grid">
                 <section class="mqtt-picker-column mqtt-picker-devices"><div class="mqtt-picker-heading"><div><strong>Geräte</strong><small>Mehrfachauswahl möglich</small></div><span id="mqtt-dialog-device-count">0 ausgewählt</span></div><label class="search-field mqtt-picker-search"><span>⌕</span><input id="mqtt-dialog-device-search" type="search" placeholder="Geräte suchen ..."></label><div class="mqtt-picker-list" id="mqtt-dialog-devices"></div></section>
                 <section class="mqtt-picker-column mqtt-picker-values"><div class="mqtt-picker-heading"><div><strong>Gemeinsame Messwerte</strong><small>Nur Werte aller ausgewählten Geräte</small></div><span id="mqtt-dialog-common-count">0 verfügbar</span></div><label class="search-field mqtt-picker-search"><span>⌕</span><input id="mqtt-dialog-value-search" type="search" placeholder="Messwerte suchen ..."></label><div class="mqtt-picker-list" id="mqtt-dialog-common-values"></div></section>
-                <section class="mqtt-picker-column mqtt-picker-selected"><div class="mqtt-picker-heading"><div><strong>Ausgewählte Werte</strong><small>Werden auf alle Geräte angewendet</small></div><span id="mqtt-dialog-selected-count">0 ausgewählt</span></div><div class="mqtt-picker-list" id="mqtt-dialog-selected-values"></div></section>
+                <section class="mqtt-picker-column mqtt-picker-selected"><div class="mqtt-picker-heading"><div><strong>Ausgewählte Werte</strong><small id="mqtt-dialog-selected-mode">Werden als Live-Messwerte gespeichert</small></div><span id="mqtt-dialog-selected-count">0 ausgewählt</span></div><div class="mqtt-picker-list" id="mqtt-dialog-selected-values"></div></section>
               </div>
             </section>
             <section class="mqtt-dialog-panel" id="mqtt-dialog-advanced-panel" data-mqtt-dialog-panel="advanced" hidden>
