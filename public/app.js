@@ -92,7 +92,8 @@ const mqttDialogState = {
   openMeasurementGroups: new Set(),
   openMeasurementSubGroups: new Set(),
   loading: false,
-  dataRequestToken: 0
+  dataRequestToken: 0,
+  historySettingsTouched: false
 };
 
 const viewLabels = {
@@ -1504,6 +1505,7 @@ function openMqttSelectionDialog({ deviceIdValue = '', mode = 'live', measuremen
   mqttDialogState.openDeviceNodes = new Set();
   mqttDialogState.openMeasurementGroups = new Set();
   mqttDialogState.openMeasurementSubGroups = new Set();
+  mqttDialogState.historySettingsTouched = false;
   $('#mqtt-dialog-mode-live').checked = initialMode === 'live';
   $('#mqtt-dialog-mode-historical').checked = initialMode === 'historical';
   $('#mqtt-dialog-device-search').value = '';
@@ -1613,6 +1615,20 @@ async function saveMqttSelection() {
           }
           const key = measurementKey(measurement);
           const alreadyConfigured = Array.isArray(cache[assignmentField][key]) && cache[assignmentField][key].length > 0;
+          const nextHistoricalSettings = historical ? {
+            interval: historyInterval,
+            ranges: historyRanges,
+            comparisons: historyComparisons
+          } : null;
+          if (historical && mqttDialogState.historySettingsTouched) {
+            const previousSettings = cache.historicalSettings[key] || {};
+            if (JSON.stringify(previousSettings) !== JSON.stringify(nextHistoricalSettings)) {
+              cache.historicalSettings[key] = nextHistoricalSettings;
+              changed = true;
+              saved += 1;
+              savedByMode[mode] += 1;
+            }
+          }
           if (alreadyConfigured && !overwrite) {
             skipped += 1;
             continue;
@@ -1624,11 +1640,7 @@ async function saveMqttSelection() {
           if (retain) cache[retainField][key] = true;
           else delete cache[retainField][key];
           if (historical) {
-            cache.historicalSettings[key] = {
-              interval: historyInterval,
-              ranges: historyRanges,
-              comparisons: historyComparisons
-            };
+            cache.historicalSettings[key] = nextHistoricalSettings;
           } else if (liveInterval > 0 || overwrite) {
             const refreshKey = cacheKey(project, id);
             if (liveInterval > 0) state.deviceRefreshIntervals[refreshKey] = liveInterval;
@@ -6414,7 +6426,14 @@ function attachEvents() {
     renderMqttDialogSelectedValues();
     updateMqttDialogStatus();
   });
+  $('#mqtt-dialog-history-interval')?.addEventListener('change', () => {
+    mqttDialogState.historySettingsTouched = true;
+  });
+  $('#mqtt-dialog-history-ranges')?.addEventListener('change', () => {
+    mqttDialogState.historySettingsTouched = true;
+  });
   $('#add-mqtt-dialog-history-comparison')?.addEventListener('click', () => {
+    mqttDialogState.historySettingsTouched = true;
     const container = $('#mqtt-dialog-history-comparisons');
     const comparisons = selectedHistoryComparisons(container);
     renderHistoryComparisons(container, [...comparisons, nextHistoryComparison(comparisons)]);
@@ -6422,6 +6441,7 @@ function attachEvents() {
   $('#mqtt-dialog-history-comparisons')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-remove-comparison]');
     if (!button) return;
+    mqttDialogState.historySettingsTouched = true;
     const index = Number(button.dataset.removeComparison);
     const container = $('#mqtt-dialog-history-comparisons');
     const comparisons = selectedHistoryComparisons(container);
@@ -6432,6 +6452,7 @@ function attachEvents() {
   $('#mqtt-dialog-history-comparisons')?.addEventListener('change', (event) => {
     const row = event.target.closest('.history-comparison-row');
     if (!row) return;
+    mqttDialogState.historySettingsTouched = true;
     const index = Number(row.dataset.index);
     const container = $('#mqtt-dialog-history-comparisons');
     const comparisons = selectedHistoryComparisons(container);
