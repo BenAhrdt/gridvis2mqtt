@@ -1552,6 +1552,13 @@ async function saveMqttSelection() {
     showToast('Bitte mindestens ein Gerät und einen Messwert auswählen.', 'warning');
     return;
   }
+  // Invalidate an older definition/history request before changing the
+  // assignments. Otherwise its captured pre-save selection could be written
+  // back after this dialog has already saved the new Live/Historie state.
+  markMeasurementMutation();
+  // Drain a UI-state request that may have been queued before the dedicated
+  // device-cache update. The cache update below must be the newer write.
+  await flushUiState();
   const button = $('#mqtt-selection-save');
   if (button) {
     button.disabled = true;
@@ -1565,8 +1572,10 @@ async function saveMqttSelection() {
   const historyRanges = selectedHistoryRanges($('#mqtt-dialog-history-ranges'));
   const historyComparisons = normalizeHistoryComparisons(selectedHistoryComparisons($('#mqtt-dialog-history-comparisons')));
   let saved = 0;
+  const savedByMode = { live: 0, historical: 0 };
   let skipped = 0;
   let unavailable = 0;
+  const savedCaches = new Map();
   try {
     for (const id of ids) {
       const data = await loadMqttDialogDeviceData(state.devices.find((device) => deviceId(device) === id));
@@ -1616,12 +1625,22 @@ async function saveMqttSelection() {
           }
           changed = true;
           saved += 1;
+          savedByMode[mode] += 1;
         }
       }
       if (!changed) continue;
       const key = cacheKey(project, id);
       state.measurementCache[key] = cache;
+      savedCaches.set(key, cache);
       await persistBackendDeviceState(project, id, cache);
+    }
+    // The dedicated endpoint above is authoritative. Keep the legacy
+    // top-level browser fields in sync as well, so the following UI-state
+    // flush cannot serialize an older cache for the currently open device.
+    const currentDeviceKey = cacheKey(project, deviceId(state.currentDevice || {}));
+    const currentSavedCache = savedCaches.get(currentDeviceKey);
+    if (currentSavedCache && isLoadedDeviceState(project, deviceId(state.currentDevice || {}))) {
+      restoreMeasurementCache(project, deviceId(state.currentDevice || {}));
     }
     writeUiCache();
     await flushUiState();
@@ -1629,6 +1648,8 @@ async function saveMqttSelection() {
     await loadMqttOverview({ silent: true });
     const details = [
       `${saved} ${saved === 1 ? 'Zuordnung' : 'Zuordnungen'} gespeichert`,
+      savedByMode.live ? `Live: ${savedByMode.live}` : '',
+      savedByMode.historical ? `Historie: ${savedByMode.historical}` : '',
       skipped ? `${skipped} bereits vorhanden` : '',
       unavailable ? `${unavailable} in der gewählten Art nicht verfügbar` : ''
     ].filter(Boolean).join(', ');
