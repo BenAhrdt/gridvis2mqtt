@@ -910,6 +910,172 @@ function onlineDiscoveryKeysFromState(snapshot = {}) {
     .map(discoveryMessageKey));
 }
 
+function mqttOverviewMeasurementName(measurement = {}) {
+  return String(
+    measurement.name
+      || measurement.label
+      || measurement.displayName
+      || measurement.measurementName
+      || measurement.valueName
+      || measurement.value
+      || 'Messwert'
+  );
+}
+
+function mqttOverviewDeviceName(device = {}, fallback = '') {
+  return String(
+    device.name
+      || device.label
+      || device.title
+      || device.serialNr
+      || device.serialNumber
+      || device.id
+      || fallback
+      || 'Unbenanntes Gerät'
+  );
+}
+
+function mqttOverviewRows(snapshot = {}, project = '') {
+  const configured = getConfig();
+  const profiles = Array.isArray(configured.mqtt.profiles) ? configured.mqtt.profiles : [];
+  const profileNames = new Map(profiles.map((profile) => [profile.id, profile.name || profile.id]));
+  const caches = snapshot.measurementCache && typeof snapshot.measurementCache === 'object'
+    ? snapshot.measurementCache
+    : {};
+  const devices = snapshot.deviceCache && typeof snapshot.deviceCache === 'object'
+    ? snapshot.deviceCache
+    : {};
+  const rows = [];
+  const globalHistoryRanges = normalizedHistoryRanges(
+    snapshot.historicalGlobalSettings?.ranges,
+    ['today']
+  );
+  const globalHistoryComparisons = snapshot.historicalGlobalSettings?.comparisons;
+
+  for (const [cacheKey, cache] of Object.entries(caches)) {
+    const separator = cacheKey.lastIndexOf('::');
+    if (separator < 0) continue;
+    const cacheProject = cacheKey.slice(0, separator);
+    const deviceId = cacheKey.slice(separator + 2);
+    if (project && cacheProject !== project) continue;
+    if (!cache || typeof cache !== 'object') continue;
+    const device = (devices[cacheProject] || []).find((entry) => stateItemId(entry) === deviceId) || { id: deviceId };
+    const liveValues = new Map((cache.onlineValues || [])
+      .filter((measurement) => measurement?.value !== undefined && measurement?.type !== undefined)
+      .map((measurement) => [stateMeasurementKey(measurement), measurement]));
+    const historicalValues = new Map((cache.historicalValues || [])
+      .filter((measurement) => measurement?.value !== undefined && measurement?.type !== undefined)
+      .map((measurement) => [stateMeasurementKey(measurement), measurement]));
+    const deviceHistoryDefaults = cache.historicalDefaults && typeof cache.historicalDefaults === 'object'
+      ? cache.historicalDefaults
+      : {};
+    const deviceHistoryRanges = normalizedHistoryRanges(deviceHistoryDefaults.ranges, globalHistoryRanges);
+    const deviceHistoryComparisons = Array.isArray(deviceHistoryDefaults.comparisons)
+      ? deviceHistoryDefaults.comparisons
+      : globalHistoryComparisons;
+    const deviceName = mqttOverviewDeviceName(device, deviceId);
+    const pushRows = (assignments, activeAssignments, measurements, historical) => {
+      for (const [measurementKey, assignedProfileIds] of Object.entries(assignments || {})) {
+        if (!Array.isArray(assignedProfileIds) || !assignedProfileIds.length) continue;
+        const measurement = measurements.get(measurementKey);
+        if (!measurement) continue;
+        const activeProfileIds = Array.isArray(activeAssignments?.[measurementKey])
+          ? activeAssignments[measurementKey].filter((id) => profileNames.has(id) && profiles.find((profile) => profile.id === id)?.enabled !== false)
+          : [];
+        const configuredSettings = cache.historicalSettings?.[measurementKey] || {};
+        const ranges = historical
+          ? historicalRangesWithComparison(
+            Array.isArray(configuredSettings.ranges) && configuredSettings.ranges.length
+              ? configuredSettings.ranges
+              : deviceHistoryRanges,
+            Array.isArray(configuredSettings.comparisons)
+              ? configuredSettings.comparisons
+              : deviceHistoryComparisons
+          )
+          : [];
+        const values = {};
+        let updatedAt = '';
+        if (historical) {
+          for (const range of ranges) {
+            const jobKey = `${cacheProject}::${deviceId}::${measurementKey}::${range}`;
+            const cached = historicalValueCache.get(jobKey);
+            if (cached) {
+              values[range] = cached.value;
+              if (!updatedAt || String(cached.updatedAt) > updatedAt) updatedAt = cached.updatedAt || '';
+            }
+          }
+        } else {
+          const cached = liveValueCache.get(liveValueCacheKey(cacheProject, deviceId, measurement.value, measurement.type));
+          if (cached) {
+            values.live = cached.value;
+            updatedAt = cached.updatedAt || '';
+          }
+        }
+        const profileIds = [...new Set(assignedProfileIds)]
+          .filter((id) => profileNames.has(id) && profiles.find((profile) => profile.id === id)?.enabled !== false);
+        if (!profileIds.length) continue;
+        rows.push({
+          project: cacheProject,
+          deviceId,
+          deviceName,
+          measurementKey,
+          name: mqttOverviewMeasurementName(measurement),
+          value: String(measurement.value),
+          type: String(measurement.type),
+          typeLabel: String(measurement.typeLabel || measurement.type),
+          unit: String(measurement.unit || ''),
+          mode: historical ? 'historical' : 'live',
+          discovered: true,
+          active: activeProfileIds.length > 0,
+          profileIds,
+          profiles: profileIds.map((id) => profileNames.get(id) || id),
+          values,
+          updatedAt,
+          cycle: historical
+            ? normalizedHistoryInterval(configuredSettings.interval, normalizedHistoryInterval(deviceHistoryDefaults.refreshInterval, normalizedHistoryInterval(snapshot.historicalGlobalSettings?.refreshInterval)))
+            : (Number(snapshot.deviceRefreshIntervals?.[cacheKey]) || Number(snapshot.liveRefreshInterval) || 0),
+          ranges,
+          retain: historical
+            ? cache.historicalRetainAssignments?.[measurementKey] === true
+            : cache.mqttRetainAssignments?.[measurementKey] === true
+        });
+      }
+    };
+    const mergeAssignments = (assignments = {}, activeAssignments = {}) => {
+      const merged = {};
+      for (const measurementKey of new Set([...Object.keys(assignments), ...Object.keys(activeAssignments)])) {
+        const profileIds = [...new Set([
+          ...(Array.isArray(assignments[measurementKey]) ? assignments[measurementKey] : []),
+          ...(Array.isArray(activeAssignments[measurementKey]) ? activeAssignments[measurementKey] : [])
+        ])];
+        if (profileIds.length) merged[measurementKey] = profileIds;
+      }
+      return merged;
+    };
+    pushRows(mergeAssignments(cache.mqttAssignments, cache.mqttActiveAssignments), cache.mqttActiveAssignments, liveValues, false);
+    pushRows(mergeAssignments(cache.historicalMqttAssignments, cache.historicalMqttActiveAssignments), cache.historicalMqttActiveAssignments, historicalValues, true);
+  }
+
+  return rows.sort((left, right) => (
+    left.deviceName.localeCompare(right.deviceName, 'de', { numeric: true, sensitivity: 'base' })
+    || left.mode.localeCompare(right.mode)
+    || left.name.localeCompare(right.name, 'de', { numeric: true, sensitivity: 'base' })
+  ));
+}
+
+function mqttOverviewSnapshot(snapshot = {}, project = '') {
+  const rows = mqttOverviewRows(snapshot, project);
+  return {
+    rows,
+    summary: {
+      topics: rows.reduce((count, row) => count + (row.mode === 'historical' ? Math.max(1, row.ranges.length) : 1), 0),
+      measurements: rows.length,
+      devices: new Set(rows.map((row) => row.deviceId)).size,
+      active: rows.filter((row) => row.active).length
+    }
+  };
+}
+
 function logDiscoveryStateCommit(previousState, committedState, { source, clientMutationVersion, deviceKey = '' } = {}) {
   const previousKeys = activeDiscoveryKeysFromState(previousState);
   const nextKeys = activeDiscoveryKeysFromState(committedState);
@@ -2646,6 +2812,12 @@ async function handleApi(request, response, url) {
         liveValues: cachedLiveValues(project, liveRequests)
       }
     });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/mqtt/overview') {
+    const project = String(url.searchParams.get('project') || '');
+    const overview = mqttOverviewSnapshot(getState(), project);
+    return sendJson(response, 200, { ok: true, project, ...overview });
   }
 
   if (request.method === 'PUT' && url.pathname === '/api/state/device') {

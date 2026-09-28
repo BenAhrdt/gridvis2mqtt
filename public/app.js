@@ -32,6 +32,7 @@ const state = {
   mqttDeviceCounts: {},
   mqttDeviceSummaries: {},
   discoveryPreparedCount: 0,
+  mqttOverview: { project: '', rows: [], summary: {} },
   selectedDeviceIds: {},
   measurementCache: {},
   backendDeviceStateKey: '',
@@ -77,9 +78,22 @@ const state = {
 
 let pendingBackup = null;
 
+const mqttDialogState = {
+  mode: 'live',
+  tab: 'selection',
+  selectedDeviceIds: new Set(),
+  deviceData: new Map(),
+  selectedKeys: new Set(),
+  deviceSearch: '',
+  valueSearch: '',
+  initialMeasurementKey: '',
+  loading: false
+};
+
 const viewLabels = {
   overview: 'Übersicht',
   devices: 'Geräte',
+  mqtt: 'MQTT',
   'device-detail': 'Gerätedetails',
   alarms: 'Alarme',
   logbook: 'Logbuch',
@@ -668,6 +682,7 @@ function setView(view, updateHash = true) {
   configureDeviceInfoRefresh();
   if (view === 'logbook') loadLogbook({ silent: true }).catch(reportLogbookError);
   if (view === 'administration') loadAdministration().catch(showError);
+  if (view === 'mqtt') loadMqttOverview({ silent: true }).catch(reportBackgroundError);
 }
 
 function setDetailTab(tab) {
@@ -688,6 +703,458 @@ function setDetailTab(tab) {
     // backend queue; otherwise this creates a second request series for the
     // same device while the backend is already processing it.
     loadHistoricalData({ silent: true, publishMqtt: false }).catch(reportBackgroundError);
+  }
+}
+
+function mqttOverviewCycleLabel(seconds, mode) {
+  const value = Number(seconds) || 0;
+  if (!value) return 'Standardzyklus';
+  const options = mode === 'historical'
+    ? HISTORY_CYCLE_OPTIONS
+    : [[1, 'Jede Sekunde'], [2, 'Alle 2 Sekunden'], [5, 'Alle 5 Sekunden'], [10, 'Alle 10 Sekunden'], [30, 'Alle 30 Sekunden'], [60, 'Jede Minute'], [300, 'Alle 5 Minuten']];
+  return options.find(([candidate]) => candidate === value)?.[1] || `Alle ${value} Sekunden`;
+}
+
+function mqttOverviewValue(value, unit = '') {
+  if (value === undefined || value === null || value === '') return '–';
+  const formatted = typeof value === 'number'
+    ? value.toLocaleString('de-DE', { maximumFractionDigits: 3 })
+    : String(value);
+  return `${formatted}${unit ? ` ${unit}` : ''}`;
+}
+
+function mqttOverviewRangeMarkup(row) {
+  if (row.mode !== 'historical') return `<span class="mqtt-cycle-label">${escapeHtml(mqttOverviewCycleLabel(row.cycle, row.mode))}</span>`;
+  const ranges = Array.isArray(row.ranges) ? row.ranges : [];
+  const values = row.values && typeof row.values === 'object' ? row.values : {};
+  const chips = ranges.slice(0, 4).map((range) => `<span class="mqtt-range-chip"><strong>${escapeHtml(historyRangeLabel(range))}</strong><em>${escapeHtml(mqttOverviewValue(values[range], row.unit))}</em></span>`);
+  if (ranges.length > 4) chips.push(`<span class="mqtt-range-more">+${ranges.length - 4} weitere</span>`);
+  return `<div class="mqtt-range-cell">${chips.join('') || '<span class="mqtt-cycle-label">Keine Zeitbereiche</span>'}<small>${escapeHtml(mqttOverviewCycleLabel(row.cycle, row.mode))}</small></div>`;
+}
+
+function mqttOverviewLatestHistoryValue(row) {
+  const values = row.values && typeof row.values === 'object' ? row.values : {};
+  const range = (row.ranges || []).find((candidate) => values[candidate] !== undefined && values[candidate] !== null && values[candidate] !== '');
+  return range ? mqttOverviewValue(values[range], row.unit) : '–';
+}
+
+function mqttOverviewRowsForDisplay() {
+  const query = ($('#mqtt-overview-search')?.value || '').trim().toLocaleLowerCase('de');
+  const mode = $('#mqtt-overview-mode')?.value || 'all';
+  const status = $('#mqtt-overview-status')?.value || 'all';
+  return (state.mqttOverview.rows || []).filter((row) => {
+    if (mode !== 'all' && row.mode !== mode) return false;
+    if (status === 'active' && !row.active) return false;
+    if (status === 'inactive' && row.active) return false;
+    if (!query) return true;
+    return `${row.deviceName} ${row.name} ${row.value} ${row.type} ${row.typeLabel}`.toLocaleLowerCase('de').includes(query);
+  });
+}
+
+function renderMqttOverview() {
+  const summary = state.mqttOverview.summary || {};
+  setText('#mqtt-overview-topic-count', summary.topics || 0);
+  setText('#mqtt-overview-measurement-count', summary.measurements || 0);
+  setText('#mqtt-overview-measurement-detail', `${summary.devices || 0} ${summary.devices === 1 ? 'Gerät' : 'Geräte'}`);
+  setText('#mqtt-overview-active-count', summary.active || 0);
+  setText('#mqtt-nav-count', summary.topics || 0);
+  const rows = mqttOverviewRowsForDisplay();
+  const body = $('#mqtt-overview-table-body');
+  if (!body) return;
+  if (!rows.length) {
+    const message = state.mqttOverview.project
+      ? 'Keine passenden MQTT-Discovery-Werte gefunden.'
+      : 'Wähle zuerst ein GridVis-Projekt aus.';
+    body.innerHTML = `<tr><td colspan="7"><div class="empty-state compact"><span class="empty-icon">⌁</span><strong>${escapeHtml(message)}</strong><p>Nur Messwerte mit vorbereiteter Discovery werden hier angezeigt.</p></div></td></tr>`;
+  } else {
+    body.replaceChildren(...rows.map((row) => {
+      const tr = document.createElement('tr');
+      const profileText = row.profiles?.length ? row.profiles.join(', ') : 'MQTT-Profil';
+      const status = row.active
+        ? '<span class="value-status mqtt">MQTT aktiv</span>'
+        : '<span class="value-status discovery">Discovery vorbereitet</span>';
+      const liveValue = row.mode === 'live' ? mqttOverviewValue(row.values?.live, row.unit) : '';
+      tr.innerHTML = `<td><strong>${escapeHtml(row.deviceName)}</strong><small class="mqtt-table-meta">ID ${escapeHtml(row.deviceId)}</small></td><td><strong>${escapeHtml(row.name)}</strong><small class="mqtt-table-meta">${escapeHtml(row.value)} · ${escapeHtml(row.typeLabel)}${row.unit ? ` · ${escapeHtml(row.unit)}` : ''}</small></td><td><span class="mqtt-mode-badge ${row.mode}">${row.mode === 'historical' ? 'Historie' : 'Live'}</span></td><td><span class="mqtt-live-value">${escapeHtml(row.mode === 'live' ? liveValue : mqttOverviewLatestHistoryValue(row))}</span></td><td>${mqttOverviewRangeMarkup(row)}</td><td><div class="mqtt-status-cell">${status}<small>${escapeHtml(profileText)}</small></div></td><td><button class="button button-quiet mqtt-row-action" type="button" data-mqtt-row-edit data-device-id="${escapeHtml(row.deviceId)}" data-measurement-key="${escapeHtml(row.measurementKey)}" data-mode="${escapeHtml(row.mode)}">Öffnen</button></td>`;
+      return tr;
+    }));
+  }
+  setText('#mqtt-overview-status-text', `${rows.length} ${rows.length === 1 ? 'Eintrag' : 'Einträge'} angezeigt`);
+}
+
+async function loadMqttOverview({ silent = false } = {}) {
+  const project = $('#project-select')?.value || '';
+  if (!project) {
+    state.mqttOverview = { project: '', rows: [], summary: {} };
+    renderMqttOverview();
+    return;
+  }
+  if (!silent) setText('#mqtt-overview-status-text', 'Lade MQTT-Übersicht …');
+  const result = await api(`/api/mqtt/overview?project=${encodeURIComponent(project)}`);
+  state.mqttOverview = {
+    project,
+    rows: Array.isArray(result.rows) ? result.rows : [],
+    summary: result.summary && typeof result.summary === 'object' ? result.summary : {}
+  };
+  renderMqttOverview();
+}
+
+function mqttDialogSelectedMeasurementKeys() {
+  const prefix = `${mqttDialogState.mode}:`;
+  return [...mqttDialogState.selectedKeys]
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => key.slice(prefix.length));
+}
+
+function mqttDialogAvailableMeasurements() {
+  const ids = [...mqttDialogState.selectedDeviceIds];
+  if (!ids.length || ids.some((id) => !mqttDialogState.deviceData.has(id))) return [];
+  const mode = mqttDialogState.mode;
+  const lists = ids.map((id) => {
+    const data = mqttDialogState.deviceData.get(id);
+    const values = mode === 'historical' ? data.historical : data.live;
+    return new Map(values.map((measurement) => [measurementKey(measurement), measurement]));
+  });
+  if (!lists.length) return [];
+  const common = [...lists[0].entries()].filter(([key]) => lists.slice(1).every((list) => list.has(key)));
+  const recordedOnly = $('#mqtt-dialog-recorded')?.checked === true && mode === 'historical';
+  return common
+    .map(([, measurement]) => measurement)
+    .filter((measurement) => {
+      if (!recordedOnly) return true;
+      const recorded = itemValue(measurement.raw, 'recorded', 'isRecorded', 'recording', 'logged');
+      return recorded === '' || !['false', '0', 'no'].includes(String(recorded).toLowerCase());
+    })
+    .sort((left, right) => measurementDisplayName(left).localeCompare(measurementDisplayName(right), 'de', { numeric: true, sensitivity: 'base' }));
+}
+
+function mqttDialogSelectedMeasurements() {
+  const selectedKeys = new Set(mqttDialogSelectedMeasurementKeys());
+  return mqttDialogAvailableMeasurements().filter((measurement) => selectedKeys.has(measurementKey(measurement)));
+}
+
+function renderMqttDialogDevices() {
+  const list = $('#mqtt-dialog-devices');
+  if (!list) return;
+  const query = mqttDialogState.deviceSearch.trim().toLocaleLowerCase('de');
+  const devices = state.devices
+    .filter((device) => !query || `${deviceName(device)} ${deviceType(device)} ${deviceId(device)}`.toLocaleLowerCase('de').includes(query))
+    .sort((left, right) => deviceName(left).localeCompare(deviceName(right), 'de', { numeric: true, sensitivity: 'base' }));
+  if (!devices.length) {
+    list.innerHTML = '<div class="mqtt-picker-empty">Keine passenden Geräte gefunden.</div>';
+  } else {
+    list.replaceChildren(...devices.map((device) => {
+      const id = deviceId(device);
+      const row = document.createElement('label');
+      row.className = 'mqtt-picker-item mqtt-device-item';
+      row.innerHTML = `<input type="checkbox" value="${escapeHtml(id)}"${mqttDialogState.selectedDeviceIds.has(id) ? ' checked' : ''}><span><strong>${escapeHtml(deviceName(device))}</strong><small>${escapeHtml(deviceType(device))} · ID ${escapeHtml(id)}</small></span>`;
+      row.querySelector('input').addEventListener('change', (event) => {
+        if (event.target.checked) mqttDialogState.selectedDeviceIds.add(id);
+        else mqttDialogState.selectedDeviceIds.delete(id);
+        renderMqttDialogDevices();
+        refreshMqttDialogData().catch(reportBackgroundError);
+      });
+      return row;
+    }));
+  }
+  setText('#mqtt-dialog-device-count', `${mqttDialogState.selectedDeviceIds.size} ausgewählt`);
+}
+
+function renderMqttDialogCommonValues() {
+  const list = $('#mqtt-dialog-common-values');
+  if (!list) return;
+  const values = mqttDialogAvailableMeasurements();
+  const selectedPrefix = `${mqttDialogState.mode}:`;
+  const commonKeys = new Set(values.map((measurement) => measurementKey(measurement)));
+  for (const key of [...mqttDialogState.selectedKeys]) {
+    if (key.startsWith(selectedPrefix) && !commonKeys.has(key.slice(selectedPrefix.length))) mqttDialogState.selectedKeys.delete(key);
+  }
+  const query = mqttDialogState.valueSearch.trim().toLocaleLowerCase('de');
+  const filtered = values.filter((measurement) => !query || `${measurementDisplayName(measurement)} ${measurement.value} ${measurement.type} ${measurement.typeLabel}`.toLocaleLowerCase('de').includes(query));
+  if (!mqttDialogState.selectedDeviceIds.size) {
+    list.innerHTML = '<div class="mqtt-picker-empty">Wähle links mindestens ein Gerät aus.</div>';
+  } else if (mqttDialogState.loading && !values.length) {
+    list.innerHTML = '<div class="mqtt-picker-empty">Messwertdefinitionen werden geladen …</div>';
+  } else if (!filtered.length) {
+    list.innerHTML = '<div class="mqtt-picker-empty">Keine gemeinsamen Messwerte gefunden.</div>';
+  } else {
+    list.replaceChildren(...filtered.map((measurement) => {
+      const key = measurementKey(measurement);
+      const row = document.createElement('label');
+      row.className = 'mqtt-picker-item mqtt-value-item';
+      row.innerHTML = `<input type="checkbox"${mqttDialogState.selectedKeys.has(`${mqttDialogState.mode}:${key}`) ? ' checked' : ''}><span><strong>${escapeHtml(measurementDisplayName(measurement))}</strong><small>${escapeHtml(measurement.value)} · ${escapeHtml(measurement.typeLabel || measurement.type)}${measurement.unit ? ` · ${escapeHtml(measurement.unit)}` : ''}</small></span>`;
+      row.querySelector('input').addEventListener('change', (event) => {
+        const selectedKey = `${mqttDialogState.mode}:${key}`;
+        if (event.target.checked) mqttDialogState.selectedKeys.add(selectedKey);
+        else mqttDialogState.selectedKeys.delete(selectedKey);
+        renderMqttDialogCommonValues();
+        renderMqttDialogSelectedValues();
+        updateMqttDialogStatus();
+      });
+      return row;
+    }));
+  }
+  setText('#mqtt-dialog-common-count', `${values.length} verfügbar`);
+}
+
+function renderMqttDialogSelectedValues() {
+  const list = $('#mqtt-dialog-selected-values');
+  if (!list) return;
+  const selected = mqttDialogSelectedMeasurements();
+  if (!selected.length) {
+    list.innerHTML = '<div class="mqtt-picker-empty">Noch keine Messwerte ausgewählt.</div>';
+  } else {
+    list.replaceChildren(...selected.map((measurement) => {
+      const row = document.createElement('div');
+      row.className = 'mqtt-picker-selected-item';
+      const key = measurementKey(measurement);
+      row.innerHTML = `<div><strong>${escapeHtml(measurementDisplayName(measurement))}</strong><small>${escapeHtml(measurement.value)} · ${escapeHtml(measurement.typeLabel || measurement.type)}${measurement.unit ? ` · ${escapeHtml(measurement.unit)}` : ''}</small></div><button type="button" data-mqtt-selected-remove aria-label="${escapeHtml(measurementDisplayName(measurement))} entfernen">×</button>`;
+      row.querySelector('[data-mqtt-selected-remove]').addEventListener('click', () => {
+        mqttDialogState.selectedKeys.delete(`${mqttDialogState.mode}:${key}`);
+        renderMqttDialogCommonValues();
+        renderMqttDialogSelectedValues();
+        updateMqttDialogStatus();
+      });
+      return row;
+    }));
+  }
+  setText('#mqtt-dialog-selected-count', `${selected.length} ausgewählt`);
+}
+
+function updateMqttDialogAdvanced() {
+  const historical = mqttDialogState.mode === 'historical';
+  const historySettings = $('#mqtt-dialog-history-settings');
+  const liveSettings = $('#mqtt-dialog-live-settings');
+  const recorded = $('.mqtt-dialog-recorded');
+  if (historySettings) historySettings.hidden = !historical;
+  if (liveSettings) liveSettings.hidden = historical;
+  if (recorded) recorded.hidden = !historical;
+  const profileSelect = $('#mqtt-dialog-profile');
+  if (profileSelect && !profileSelect.options.length) {
+    profileSelect.replaceChildren(...mqttProfiles().map((profile) => new Option(profile.name, profile.id)));
+    profileSelect.value = defaultMqttProfileId();
+  }
+  const historyInterval = $('#mqtt-dialog-history-interval');
+  if (historyInterval && !historyInterval.options.length) {
+    historyInterval.replaceChildren(...HISTORY_CYCLE_OPTIONS.map(([seconds, label]) => new Option(label, String(seconds))));
+    historyInterval.value = '900';
+  }
+  renderHistoryRangeOptions($('#mqtt-dialog-history-ranges'), ['today'], 'mqtt-dialog-history-range');
+}
+
+function updateMqttDialogStatus() {
+  const devices = mqttDialogState.selectedDeviceIds.size;
+  const values = mqttDialogSelectedMeasurements().length;
+  setText('#mqtt-dialog-status', devices && values
+    ? `${devices} ${devices === 1 ? 'Gerät' : 'Geräte'} · ${values} ${values === 1 ? 'Messwert' : 'Messwerte'} · wird auf alle ausgewählten Geräte angewendet.`
+    : 'Noch keine Geräte und Messwerte ausgewählt.');
+  const save = $('#mqtt-selection-save');
+  if (save) save.disabled = !devices || !values || mqttDialogState.loading;
+}
+
+function setMqttDialogTab(tab) {
+  mqttDialogState.tab = tab;
+  $$('[data-mqtt-dialog-tab]').forEach((button) => button.classList.toggle('active', button.dataset.mqttDialogTab === tab));
+  $$('[data-mqtt-dialog-panel]').forEach((panel) => {
+    const active = panel.dataset.mqttDialogPanel === tab;
+    panel.classList.toggle('active', active);
+    panel.hidden = !active;
+  });
+}
+
+async function loadMqttDialogDeviceData(device) {
+  const project = $('#project-select')?.value || '';
+  const id = deviceId(device);
+  if (!project || !id || mqttDialogState.deviceData.has(id)) return mqttDialogState.deviceData.get(id);
+  const stateResult = await api(`/api/state/device?project=${encodeURIComponent(project)}&deviceId=${encodeURIComponent(id)}`);
+  const sourceCache = stateResult.data?.measurementCache && typeof stateResult.data.measurementCache === 'object'
+    ? stateResult.data.measurementCache
+    : {};
+  let onlineRaw = Array.isArray(sourceCache.onlineValues) ? sourceCache.onlineValues : null;
+  let historicalRaw = Array.isArray(sourceCache.historicalValues) ? sourceCache.historicalValues : null;
+  const requests = [];
+  if (!onlineRaw) requests.push(api(`/api/gridvis/projects/${encodeURIComponent(project)}/devices/${encodeURIComponent(id)}/online-values`).then((result) => { onlineRaw = listData(result.data); }));
+  if (!historicalRaw) requests.push(api(`/api/gridvis/projects/${encodeURIComponent(project)}/devices/${encodeURIComponent(id)}/historical-values`).then((result) => { historicalRaw = listData(result.data); }));
+  if (requests.length) await Promise.all(requests);
+  const live = (onlineRaw || []).map((item) => normalizeMeasurement(item, 'live'));
+  const historical = mergeHistoricalMeasurements((historicalRaw || []).map((item) => normalizeMeasurement(item, 'historical'))).filter(historicalMeasurementAvailable);
+  const cache = {
+    ...structuredClone(sourceCache),
+    onlineValues: live,
+    historicalValues: historical
+  };
+  const data = { device, cache, live, historical };
+  mqttDialogState.deviceData.set(id, data);
+  return data;
+}
+
+async function refreshMqttDialogData() {
+  const ids = [...mqttDialogState.selectedDeviceIds];
+  mqttDialogState.loading = ids.some((id) => !mqttDialogState.deviceData.has(id));
+  setText('#mqtt-dialog-loading', mqttDialogState.loading ? 'Messwertdefinitionen werden geladen …' : '');
+  renderMqttDialogCommonValues();
+  updateMqttDialogStatus();
+  if (!ids.length) return;
+  try {
+    await Promise.all(ids.map((id) => loadMqttDialogDeviceData(state.devices.find((device) => deviceId(device) === id))));
+    if (mqttDialogState.initialMeasurementKey
+      && mqttDialogAvailableMeasurements().some((measurement) => measurementKey(measurement) === mqttDialogState.initialMeasurementKey)) {
+      mqttDialogState.selectedKeys.add(`${mqttDialogState.mode}:${mqttDialogState.initialMeasurementKey}`);
+      mqttDialogState.initialMeasurementKey = '';
+    }
+  } finally {
+    mqttDialogState.loading = false;
+    setText('#mqtt-dialog-loading', '');
+    renderMqttDialogCommonValues();
+    renderMqttDialogSelectedValues();
+    updateMqttDialogStatus();
+  }
+}
+
+function openMqttSelectionDialog({ deviceIdValue = '', mode = 'live', measurementKeyValue = '' } = {}) {
+  const project = $('#project-select')?.value || '';
+  if (!project) {
+    showToast('Bitte zuerst ein GridVis-Projekt auswählen.', 'warning');
+    setView('settings');
+    return;
+  }
+  if (!state.devices.length) {
+    showToast('Bitte zuerst die Geräte des Projekts laden.', 'warning');
+    setView('devices');
+    return;
+  }
+  mqttDialogState.mode = mode === 'historical' ? 'historical' : 'live';
+  mqttDialogState.tab = 'selection';
+  mqttDialogState.selectedDeviceIds = new Set(deviceIdValue && state.devices.some((device) => deviceId(device) === String(deviceIdValue))
+    ? [String(deviceIdValue)]
+    : state.currentDevice && state.devices.some((device) => deviceId(device) === deviceId(state.currentDevice))
+      ? [deviceId(state.currentDevice)]
+      : []);
+  mqttDialogState.deviceData = new Map();
+  mqttDialogState.selectedKeys = new Set();
+  mqttDialogState.deviceSearch = '';
+  mqttDialogState.valueSearch = '';
+  mqttDialogState.initialMeasurementKey = measurementKeyValue;
+  $('#mqtt-dialog-kind').value = mqttDialogState.mode;
+  $('#mqtt-dialog-device-search').value = '';
+  $('#mqtt-dialog-value-search').value = '';
+  $('#mqtt-dialog-profile').replaceChildren(...mqttProfiles().map((profile) => new Option(profile.name, profile.id)));
+  $('#mqtt-dialog-profile').value = defaultMqttProfileId();
+  $('#mqtt-dialog-live-interval').value = '0';
+  $('#mqtt-dialog-history-interval').replaceChildren(...HISTORY_CYCLE_OPTIONS.map(([seconds, label]) => new Option(label, String(seconds))));
+  $('#mqtt-dialog-history-interval').value = '900';
+  $('#mqtt-dialog-retain').checked = false;
+  $('#mqtt-dialog-overwrite').checked = false;
+  renderHistoryRangeOptions($('#mqtt-dialog-history-ranges'), ['today'], 'mqtt-dialog-history-range');
+  setMqttDialogTab('selection');
+  renderMqttDialogDevices();
+  renderMqttDialogCommonValues();
+  renderMqttDialogSelectedValues();
+  updateMqttDialogAdvanced();
+  const dialog = $('#mqtt-selection-dialog');
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+  refreshMqttDialogData().catch((error) => {
+    mqttDialogState.loading = false;
+    renderMqttDialogCommonValues();
+    updateMqttDialogStatus();
+    showError(error);
+  });
+}
+
+function closeMqttSelectionDialog() {
+  $('#mqtt-selection-dialog')?.close();
+  mqttDialogState.loading = false;
+}
+
+function appendUniqueMeasurement(list, measurement) {
+  const next = Array.isArray(list) ? [...list] : [];
+  if (!next.some((entry) => measurementKey(entry) === measurementKey(measurement))) next.push(measurement);
+  return next;
+}
+
+async function saveMqttSelection() {
+  const project = $('#project-select')?.value || '';
+  const ids = [...mqttDialogState.selectedDeviceIds];
+  const measurements = mqttDialogSelectedMeasurements();
+  if (!project || !ids.length || !measurements.length) {
+    showToast('Bitte mindestens ein Gerät und einen Messwert auswählen.', 'warning');
+    return;
+  }
+  const button = $('#mqtt-selection-save');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Speichere …';
+  }
+  const historical = mqttDialogState.mode === 'historical';
+  const profileId = $('#mqtt-dialog-profile').value || defaultMqttProfileId();
+  const retain = $('#mqtt-dialog-retain').checked === true;
+  const overwrite = $('#mqtt-dialog-overwrite').checked === true;
+  const liveInterval = Number($('#mqtt-dialog-live-interval').value) || 0;
+  const historyInterval = normalizeHistoryRefreshInterval($('#mqtt-dialog-history-interval').value);
+  const historyRanges = selectedHistoryRanges($('#mqtt-dialog-history-ranges'));
+  let saved = 0;
+  let skipped = 0;
+  try {
+    for (const id of ids) {
+      const data = await loadMqttDialogDeviceData(state.devices.find((device) => deviceId(device) === id));
+      const cache = structuredClone(data.cache || {});
+      const available = historical ? data.historical : data.live;
+      const availableByKey = new Map(available.map((measurement) => [measurementKey(measurement), measurement]));
+      const assignmentField = historical ? 'historicalMqttAssignments' : 'mqttAssignments';
+      const activeField = historical ? 'historicalMqttActiveAssignments' : 'mqttActiveAssignments';
+      const selectedField = historical ? 'historicalSelectedMeasurements' : 'selectedMeasurements';
+      const retainField = historical ? 'historicalRetainAssignments' : 'mqttRetainAssignments';
+      cache[assignmentField] = { ...(cache[assignmentField] || {}) };
+      cache[activeField] = { ...(cache[activeField] || {}) };
+      cache[retainField] = { ...(cache[retainField] || {}) };
+      cache[selectedField] = Array.isArray(cache[selectedField]) ? cache[selectedField] : [];
+      if (historical) cache.historicalSettings = { ...(cache.historicalSettings || {}) };
+      let changed = false;
+      for (const selected of measurements) {
+        const measurement = availableByKey.get(measurementKey(selected));
+        if (!measurement) continue;
+        const key = measurementKey(measurement);
+        const alreadyConfigured = Array.isArray(cache[assignmentField][key]) && cache[assignmentField][key].length > 0;
+        if (alreadyConfigured && !overwrite) {
+          skipped += 1;
+          continue;
+        }
+        cache[assignmentField][key] = [profileId];
+        cache[activeField][key] = [profileId];
+        cache[selectedField] = appendUniqueMeasurement(cache[selectedField], measurement);
+        if (!historical) cache.displayedMeasurements = appendUniqueMeasurement(cache.displayedMeasurements, measurement);
+        if (retain) cache[retainField][key] = true;
+        else delete cache[retainField][key];
+        if (historical) {
+          cache.historicalSettings[key] = { interval: historyInterval, ranges: historyRanges };
+        } else if (liveInterval > 0 || overwrite) {
+          const refreshKey = cacheKey(project, id);
+          if (liveInterval > 0) state.deviceRefreshIntervals[refreshKey] = liveInterval;
+          else delete state.deviceRefreshIntervals[refreshKey];
+        }
+        changed = true;
+        saved += 1;
+      }
+      if (!changed) continue;
+      const key = cacheKey(project, id);
+      state.measurementCache[key] = cache;
+      await persistBackendDeviceState(project, id, cache);
+    }
+    writeUiCache();
+    await flushUiState();
+    closeMqttSelectionDialog();
+    await loadMqttOverview({ silent: true });
+    const message = skipped
+      ? `${saved} ${saved === 1 ? 'Messwert' : 'Messwerte'} gespeichert, ${skipped} bereits vorhanden.`
+      : `${saved} ${saved === 1 ? 'Messwert' : 'Messwerte'} für ${ids.length} ${ids.length === 1 ? 'Gerät' : 'Geräte'} gespeichert.`;
+    showToast(message, 'success');
+  } catch (error) {
+    showError(error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Speichern und veröffentlichen';
+    }
   }
 }
 
@@ -4130,6 +4597,7 @@ async function loadProjects({ navigate = false, notifyEmpty = true, background =
     ? `${state.projects.length} GridVis-Projekte geladen.`
     : 'GridVis antwortet, meldet aber keine geladenen Projekte.');
   if (selectedProject) await loadDevices({ navigate: false, background });
+  if (state.currentView === 'mqtt') await loadMqttOverview({ silent: true });
   if (navigate && state.projects.length > 0) setView('devices');
   if (state.projects.length === 0 && notifyEmpty) showToast('Verbunden, aber GridVis meldet keine geladenen Projekte.', 'warning');
   writeUiCache();
@@ -5378,6 +5846,7 @@ function attachEvents() {
     restoreProjectData(project);
     writeUiCache();
     loadDevices({ navigate: state.currentView !== 'settings' }).catch(showError);
+    if (state.currentView === 'mqtt') loadMqttOverview({ silent: true }).catch(reportBackgroundError);
   });
   $('#device-select').addEventListener('change', () => openDevice($('#device-select').value).catch(showError));
   $('#device-search').addEventListener('input', () => { renderDeviceList(); writeUiCache(); });
@@ -5387,6 +5856,40 @@ function attachEvents() {
     renderDeviceList();
     writeUiCache();
   });
+  $('#mqtt-add-measurement')?.addEventListener('click', () => openMqttSelectionDialog());
+  $('#mqtt-refresh-overview')?.addEventListener('click', () => loadMqttOverview().catch(showError));
+  $('#mqtt-overview-mode')?.addEventListener('change', renderMqttOverview);
+  $('#mqtt-overview-status')?.addEventListener('change', renderMqttOverview);
+  $('#mqtt-overview-search')?.addEventListener('input', renderMqttOverview);
+  $('#mqtt-overview-table-body')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-mqtt-row-edit]');
+    if (!button) return;
+    openMqttSelectionDialog({ deviceIdValue: button.dataset.deviceId, measurementKeyValue: button.dataset.measurementKey, mode: button.dataset.mode });
+  });
+  $('#mqtt-selection-close')?.addEventListener('click', closeMqttSelectionDialog);
+  $('#mqtt-selection-cancel')?.addEventListener('click', closeMqttSelectionDialog);
+  $$('[data-mqtt-dialog-tab]').forEach((button) => button.addEventListener('click', () => setMqttDialogTab(button.dataset.mqttDialogTab)));
+  $('#mqtt-dialog-kind')?.addEventListener('change', (event) => {
+    mqttDialogState.mode = event.target.value === 'historical' ? 'historical' : 'live';
+    updateMqttDialogAdvanced();
+    renderMqttDialogCommonValues();
+    renderMqttDialogSelectedValues();
+    updateMqttDialogStatus();
+  });
+  $('#mqtt-dialog-device-search')?.addEventListener('input', (event) => {
+    mqttDialogState.deviceSearch = event.target.value;
+    renderMqttDialogDevices();
+  });
+  $('#mqtt-dialog-value-search')?.addEventListener('input', (event) => {
+    mqttDialogState.valueSearch = event.target.value;
+    renderMqttDialogCommonValues();
+  });
+  $('#mqtt-dialog-recorded')?.addEventListener('change', () => {
+    renderMqttDialogCommonValues();
+    renderMqttDialogSelectedValues();
+    updateMqttDialogStatus();
+  });
+  $('#mqtt-selection-save')?.addEventListener('click', () => saveMqttSelection().catch(showError));
   $('#gridvis-form').addEventListener('submit', (event) => { event.preventDefault(); saveConnection().catch(showError); });
   $('#application-form')?.addEventListener('submit', (event) => { event.preventDefault(); saveApplicationUrl().catch(showError); });
   $('#gridvis-test')?.addEventListener('click', () => checkGridvisConnection().catch(showError));

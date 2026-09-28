@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050708">
     <title>GridVis2MQTT</title>
     <link rel="icon" href="/branding/gridvis2mqtt.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=0.3.11-1">
+    <link rel="stylesheet" href="/styles.css?v=0.3.11-2">
   </head>
   <body>
     <section class="auth-screen" id="login-screen" hidden>
@@ -72,6 +72,7 @@
           <p class="nav-label">Arbeitsbereich</p>
           <a class="nav-link active" href="#overview" data-view-link="overview"><span class="nav-icon">⌂</span><span>Übersicht</span></a>
           <a class="nav-link" href="#devices" data-view-link="devices"><span class="nav-icon device-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M7 8h10M7 12h4M7 16h7"></path></svg></span><span>Geräte</span><span class="nav-count" id="device-nav-count">0</span></a>
+          <a class="nav-link" href="#mqtt" data-view-link="mqtt"><span class="nav-icon">⌁</span><span>MQTT</span><span class="nav-count" id="mqtt-nav-count">0</span></a>
           <a class="nav-link" href="#alarms" data-view-link="alarms"><span class="nav-icon">△</span><span>Alarme</span></a>
           <a class="nav-link" href="#logbook" data-view-link="logbook"><span class="nav-icon">☷</span><span>Logbuch</span></a>
 
@@ -137,6 +138,38 @@
             </form>
           </dialog>
 
+          <dialog class="mqtt-selection-dialog" id="mqtt-selection-dialog" aria-labelledby="mqtt-selection-title">
+            <div class="mqtt-dialog-header">
+              <div><p class="overline">MQTT</p><h2 id="mqtt-selection-title">Messwertauswahl</h2><p>Wähle Geräte und gemeinsame Messwerte für neue Discovery-Topics.</p></div>
+              <button class="device-info-close" id="mqtt-selection-close" type="button" aria-label="Messwertauswahl schließen">×</button>
+            </div>
+            <nav class="mqtt-dialog-tabs" aria-label="MQTT-Messwertauswahl">
+              <button class="mqtt-dialog-tab active" type="button" data-mqtt-dialog-tab="selection">Messwerte auswählen</button>
+              <button class="mqtt-dialog-tab" type="button" data-mqtt-dialog-tab="advanced">Erweiterte Einstellungen</button>
+            </nav>
+            <section class="mqtt-dialog-panel active" id="mqtt-dialog-selection-panel" data-mqtt-dialog-panel="selection">
+              <div class="mqtt-dialog-mode-row">
+                <label class="field"><span>Messwertart</span><select id="mqtt-dialog-kind"><option value="live">Live-Messwerte</option><option value="historical">Historische Messwerte</option></select></label>
+                <label class="mqtt-dialog-recorded"><input id="mqtt-dialog-recorded" type="checkbox"> Nur aufgezeichnete Werte</label>
+                <span class="mqtt-dialog-loading" id="mqtt-dialog-loading" role="status"></span>
+              </div>
+              <div class="mqtt-picker-grid">
+                <section class="mqtt-picker-column mqtt-picker-devices"><div class="mqtt-picker-heading"><div><strong>Geräte</strong><small>Mehrfachauswahl möglich</small></div><span id="mqtt-dialog-device-count">0 ausgewählt</span></div><label class="search-field mqtt-picker-search"><span>⌕</span><input id="mqtt-dialog-device-search" type="search" placeholder="Geräte suchen ..."></label><div class="mqtt-picker-list" id="mqtt-dialog-devices"></div></section>
+                <section class="mqtt-picker-column mqtt-picker-values"><div class="mqtt-picker-heading"><div><strong>Gemeinsame Messwerte</strong><small>Nur Werte aller ausgewählten Geräte</small></div><span id="mqtt-dialog-common-count">0 verfügbar</span></div><label class="search-field mqtt-picker-search"><span>⌕</span><input id="mqtt-dialog-value-search" type="search" placeholder="Messwerte suchen ..."></label><div class="mqtt-picker-list" id="mqtt-dialog-common-values"></div></section>
+                <section class="mqtt-picker-column mqtt-picker-selected"><div class="mqtt-picker-heading"><div><strong>Ausgewählte Werte</strong><small>Werden auf alle Geräte angewendet</small></div><span id="mqtt-dialog-selected-count">0 ausgewählt</span></div><div class="mqtt-picker-list" id="mqtt-dialog-selected-values"></div></section>
+              </div>
+            </section>
+            <section class="mqtt-dialog-panel" id="mqtt-dialog-advanced-panel" data-mqtt-dialog-panel="advanced" hidden>
+              <div class="mqtt-dialog-settings-grid">
+                <article class="mqtt-dialog-settings-card"><p class="overline">Ausgabe</p><h3>MQTT-Zuordnung</h3><label class="field"><span>MQTT-Profil</span><select id="mqtt-dialog-profile"></select></label><label class="profile-default-field"><input id="mqtt-dialog-retain" type="checkbox"> State-Wert retained veröffentlichen</label></article>
+                <article class="mqtt-dialog-settings-card" id="mqtt-dialog-live-settings"><p class="overline">Live</p><h3>Abfragezyklus</h3><label class="field"><span>Gerätezyklus</span><select id="mqtt-dialog-live-interval"><option value="0">Standardzyklus verwenden</option><option value="1">Jede Sekunde</option><option value="2">Alle 2 Sekunden</option><option value="5">Alle 5 Sekunden</option><option value="10">Alle 10 Sekunden</option><option value="30">Alle 30 Sekunden</option><option value="60">Jede Minute</option><option value="300">Alle 5 Minuten</option></select></label><p class="form-hint">Der Zyklus gilt für alle ausgewählten Geräte.</p></article>
+                <article class="mqtt-dialog-settings-card" id="mqtt-dialog-history-settings" hidden><p class="overline">Historie</p><h3>Abfrage und Zeitbereiche</h3><label class="field"><span>Historienzyklus</span><select id="mqtt-dialog-history-interval"></select></label><fieldset class="mqtt-dialog-ranges"><legend>Zeitbereiche</legend><div class="history-range-options" id="mqtt-dialog-history-ranges"></div></fieldset><p class="form-hint">Jeder ausgewählte Zeitbereich wird als eigene Discovery-Entity veröffentlicht.</p></article>
+                <article class="mqtt-dialog-settings-card mqtt-dialog-overwrite-card"><p class="overline">Bestehende Werte</p><h3>Überschreiben</h3><label class="profile-default-field"><input id="mqtt-dialog-overwrite" type="checkbox"> Vorhandene Einstellungen überschreiben</label><p class="form-hint">Deaktiviert werden bereits konfigurierte Werte nicht verändert.</p></article>
+              </div>
+            </section>
+            <div class="mqtt-dialog-footer"><span class="form-hint" id="mqtt-dialog-status">Noch keine Geräte und Messwerte ausgewählt.</span><div class="panel-actions"><button class="button button-secondary" id="mqtt-selection-cancel" type="button">Abbrechen</button><button class="button button-primary" id="mqtt-selection-save" type="button">Speichern und veröffentlichen</button></div></div>
+          </dialog>
+
           <section class="page-view active" id="view-overview" data-view="overview">
             <div class="page-heading">
               <div><p class="overline">Arbeitsbereich</p><h1>Übersicht</h1><p class="page-subtitle">GridVis-Projekte, Geräte und veröffentlichte Messwerte auf einen Blick.</p></div>
@@ -169,6 +202,13 @@
             <div class="device-layout">
               <div class="device-content"><div class="list-header"><div><h2>Geräteübersicht</h2><span id="device-list-caption">0 Geräte im Projekt</span></div></div><div class="device-list" id="device-list"><div class="empty-state"><span class="empty-icon">▦</span><strong>Noch keine Geräte geladen</strong><p>Verbinde GridVis und wähle ein Projekt aus, um die Geräteübersicht zu laden.</p><button class="button button-primary" id="empty-settings" type="button">Verbindung einrichten</button></div></div></div>
             </div>
+          </section>
+
+          <section class="page-view" id="view-mqtt" data-view="mqtt">
+            <div class="page-heading"><div><p class="overline">Arbeitsbereich</p><h1>MQTT</h1><p class="page-subtitle">Alle vorbereiteten MQTT-Discovery-Werte über deine GridVis-Geräte.</p></div><div class="heading-actions"><button class="button button-primary" id="mqtt-add-measurement" type="button">+ Messwert hinzufügen</button><button class="button button-secondary" id="mqtt-refresh-overview" type="button">↻ Aktualisieren</button></div></div>
+            <div class="stat-grid mqtt-overview-stats"><article class="stat-card"><div class="stat-icon stat-mqtt-icon"><img src="/branding/mqtt.png" alt="" aria-hidden="true"></div><div><span>Discovery-Topics</span><strong id="mqtt-overview-topic-count">0</strong><small>vorbereitete Topics</small></div></article><article class="stat-card"><div class="stat-icon blue">▦</div><div><span>Messwerte</span><strong id="mqtt-overview-measurement-count">0</strong><small id="mqtt-overview-measurement-detail">Noch keine Auswahl</small></div></article><article class="stat-card"><div class="stat-icon green">●</div><div><span>MQTT aktiv</span><strong id="mqtt-overview-active-count">0</strong><small>werden aktuell veröffentlicht</small></div></article></div>
+            <div class="toolbar content-panel mqtt-overview-toolbar"><div class="toolbar-group"><label class="field compact-field"><span>Ansicht</span><select id="mqtt-overview-mode"><option value="all">Live und Historie</option><option value="live">Nur Live</option><option value="historical">Nur Historie</option></select></label><label class="field compact-field"><span>Status</span><select id="mqtt-overview-status"><option value="all">Alle Discovery-Werte</option><option value="active">MQTT aktiv</option><option value="inactive">Nur vorbereitet</option></select></label><span class="toolbar-status" id="mqtt-overview-status-text">Noch nicht geladen</span></div><label class="search-field"><span>⌕</span><input id="mqtt-overview-search" type="search" placeholder="Gerät oder Messwert suchen ..."></label></div>
+            <article class="content-panel mqtt-overview-panel"><div class="mqtt-table-scroll"><table class="mqtt-overview-table"><thead><tr><th>Gerät</th><th>Messwert</th><th>Art</th><th>Wert</th><th>Zeitbereich / Zyklus</th><th>Status</th><th aria-label="Aktionen"></th></tr></thead><tbody id="mqtt-overview-table-body"><tr><td colspan="7"><div class="empty-state compact"><span class="empty-icon">⌁</span><strong>Noch keine MQTT-Discovery-Werte</strong><p>Füge einen Messwert hinzu oder öffne die Geräteansicht, um die vorhandene Auswahl zu konfigurieren.</p></div></td></tr></tbody></table></div></article>
           </section>
 
           <section class="page-view" id="view-device-detail" data-view="device-detail">
@@ -248,6 +288,6 @@
         </main>
       </div>
     </div>
-    <script src="/app.js?v=0.3.11-1" type="module"></script>
+    <script src="/app.js?v=0.3.11-2" type="module"></script>
   </body>
 </html>
