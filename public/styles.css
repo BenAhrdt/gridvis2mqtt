@@ -986,6 +986,49 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: var(--surface);
   box-shadow: 0 22px 70px rgba(16, 25, 35, .24);
 }
+.confirm-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 22px 70px rgba(16, 25, 35, .24);
+}
+.confirm-dialog::backdrop {
+  background: rgba(16, 25, 35, .38);
+  backdrop-filter: blur(2px);
+}
+.confirm-dialog-content {
+  display: grid;
+  gap: 10px;
+  padding: 23px;
+}
+.confirm-dialog-content h2 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -.03em;
+}
+.confirm-dialog-content > p:not(.overline) {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.confirm-dialog-content .panel-actions {
+  justify-content: flex-end;
+  margin-top: 9px;
+}
+.confirm-dialog.danger .button-primary {
+  color: #fff;
+  background: #a34848;
+  border-color: #a34848;
+}
+.confirm-dialog.danger .button-primary:hover {
+  background: #873d3d;
+  border-color: #873d3d;
+}
 .device-info-dialog::backdrop {
   background: rgba(16, 25, 35, .32);
   backdrop-filter: blur(2px);

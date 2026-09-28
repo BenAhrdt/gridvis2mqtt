@@ -509,6 +509,41 @@ function showToast(message, type = 'error') {
   }, 5200);
 }
 
+const confirmationState = { resolve: null };
+
+function finishConfirmation(confirmed) {
+  const dialog = $('#confirm-dialog');
+  const resolve = confirmationState.resolve;
+  confirmationState.resolve = null;
+  if (dialog?.open && typeof dialog.close === 'function') dialog.close();
+  else dialog?.removeAttribute('open');
+  resolve?.(Boolean(confirmed));
+}
+
+function requestConfirmation({
+  title = 'Aktion bestätigen',
+  message = '',
+  confirmLabel = 'Bestätigen',
+  cancelLabel = 'Abbrechen',
+  danger = false
+} = {}) {
+  const dialog = $('#confirm-dialog');
+  if (!dialog) return Promise.resolve(false);
+  if (confirmationState.resolve) finishConfirmation(false);
+  setText('#confirm-dialog-title', title);
+  setText('#confirm-dialog-message', message);
+  setText('#confirm-dialog-confirm', confirmLabel);
+  setText('#confirm-dialog-cancel', cancelLabel);
+  dialog.classList.toggle('danger', danger);
+  const promise = new Promise((resolve) => {
+    confirmationState.resolve = resolve;
+  });
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+  $('#confirm-dialog-confirm')?.focus();
+  return promise;
+}
+
 function setStatus(message, online = state.gridvisOnline) {
   const pending = online === null;
   const unknown = online === 'unknown';
@@ -4928,7 +4963,12 @@ async function handleAuthUserAction(event) {
   const userId = row?.dataset.userId;
   if (!userId) return;
   if (button.dataset.authAction === 'delete') {
-    if (!window.confirm('Diesen Benutzer wirklich löschen?')) return;
+    if (!await requestConfirmation({
+      title: 'Benutzer löschen?',
+      message: 'Soll dieser Benutzer wirklich gelöscht werden?',
+      confirmLabel: 'Löschen',
+      danger: true
+    })) return;
     button.disabled = true;
     try {
       await api(`/api/auth/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
@@ -5010,7 +5050,12 @@ async function restoreBackup() {
   const warning = includesConnections
     ? 'Dieses Backup enthält GridVis- und MQTT-Zugangsdaten. Sie werden die aktuellen Einstellungen ersetzen. Fortfahren?'
     : 'Die gespeicherten MQTT-Zuordnungen und Anwendungseinstellungen werden ersetzt. Fortfahren?';
-  if (!window.confirm(warning)) return;
+  if (!await requestConfirmation({
+    title: 'Backup wiederherstellen?',
+    message: warning,
+    confirmLabel: 'Wiederherstellen',
+    danger: true
+  })) return;
   const button = $('#backup-restore');
   button.disabled = true;
   try {
@@ -5186,7 +5231,12 @@ async function downloadLogbook() {
 }
 
 async function clearLogbook() {
-  if (typeof window.confirm === 'function' && !window.confirm('Das Logbuch wirklich leeren?')) return;
+  if (!await requestConfirmation({
+    title: 'Logbuch leeren?',
+    message: 'Soll das gesamte Logbuch wirklich geleert werden?',
+    confirmLabel: 'Leeren',
+    danger: true
+  })) return;
   await api('/api/logbook', { method: 'DELETE' });
   await loadLogbook({ silent: true });
 }
@@ -6508,7 +6558,7 @@ function attachEvents() {
   $('#mqtt-overview-mode')?.addEventListener('change', renderMqttOverview);
   $('#mqtt-overview-status')?.addEventListener('change', renderMqttOverview);
   $('#mqtt-overview-search')?.addEventListener('input', renderMqttOverview);
-  $('#mqtt-overview-table-body')?.addEventListener('click', (event) => {
+  $('#mqtt-overview-table-body')?.addEventListener('click', async (event) => {
     const toggle = event.target.closest('[data-mqtt-row-toggle]');
     if (toggle) {
       const row = mqttOverviewRowFromButton(toggle);
@@ -6518,7 +6568,12 @@ function attachEvents() {
     const remove = event.target.closest('[data-mqtt-row-remove]');
     if (remove) {
       const row = mqttOverviewRowFromButton(remove);
-      if (!row || !window.confirm(`„${row.name}“ (${row.mode === 'historical' ? 'Historie' : 'Live'}) wirklich vollständig entfernen?`)) return;
+      if (!row || !await requestConfirmation({
+        title: 'Messwert vollständig entfernen?',
+        message: `„${row.name}“ (${row.mode === 'historical' ? 'Historie' : 'Live'}) wirklich vollständig entfernen?`,
+        confirmLabel: 'Entfernen',
+        danger: true
+      })) return;
       updateMqttOverviewRow(row, { remove: true }).catch(showError);
       return;
     }
@@ -6531,6 +6586,15 @@ function attachEvents() {
   $('#mqtt-selection-dialog')?.addEventListener('cancel', (event) => {
     event.preventDefault();
     closeMqttSelectionDialog();
+  });
+  $('#confirm-dialog-confirm')?.addEventListener('click', () => finishConfirmation(true));
+  $('#confirm-dialog-cancel')?.addEventListener('click', () => finishConfirmation(false));
+  $('#confirm-dialog')?.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    finishConfirmation(false);
+  });
+  $('#confirm-dialog')?.addEventListener('close', () => {
+    if (confirmationState.resolve) finishConfirmation(false);
   });
   $$('[data-mqtt-dialog-tab]').forEach((button) => button.addEventListener('click', () => setMqttDialogTab(button.dataset.mqttDialogTab)));
   $$('[data-mqtt-dialog-mode]')?.forEach((input) => input.addEventListener('change', (event) => {

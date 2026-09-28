@@ -90,6 +90,17 @@
       <div class="main-shell">
         <main class="page-content">
           <dialog class="toast" id="toast" role="status" aria-live="polite"></dialog>
+          <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message">
+            <div class="confirm-dialog-content">
+              <p class="overline">Bestätigung</p>
+              <h2 id="confirm-dialog-title">Aktion bestätigen</h2>
+              <p id="confirm-dialog-message"></p>
+              <div class="panel-actions">
+                <button class="button button-secondary" id="confirm-dialog-cancel" type="button">Abbrechen</button>
+                <button class="button button-primary" id="confirm-dialog-confirm" type="button">Bestätigen</button>
+              </div>
+            </div>
+          </dialog>
           <dialog class="device-info-dialog" id="device-info-dialog" aria-labelledby="device-info-name">
             <div class="device-info-dialog-header">
               <div class="device-info-heading"><div class="device-info-avatar device-avatar" id="device-info-avatar">▦</div><div><p class="overline">Schnellübersicht</p><h2 id="device-info-name">Gerät</h2><p id="device-info-subtitle">Geräteinformationen</p></div></div>
