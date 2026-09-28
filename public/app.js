@@ -1357,41 +1357,67 @@ function setMqttDialogTab(tab) {
   });
 }
 
-async function loadMqttDialogDeviceData(device) {
+async function loadMqttDialogDeviceData(device, modes = mqttDialogSelectedModes()) {
   const project = $('#project-select')?.value || '';
   const id = deviceId(device);
-  if (!project || !id || mqttDialogState.deviceData.has(id)) return mqttDialogState.deviceData.get(id);
-  const stateResult = await api(`/api/state/device?project=${encodeURIComponent(project)}&deviceId=${encodeURIComponent(id)}`);
+  if (!project || !id) return null;
+  const existing = mqttDialogState.deviceData.get(id);
+  if (existing && modes.every((mode) => existing.loadedModes.has(mode))) return existing;
+  const stateResult = existing
+    ? { data: { measurementCache: existing.cache } }
+    : await api(`/api/state/device?project=${encodeURIComponent(project)}&deviceId=${encodeURIComponent(id)}`);
   const sourceCache = stateResult.data?.measurementCache && typeof stateResult.data.measurementCache === 'object'
     ? stateResult.data.measurementCache
     : {};
-  let onlineRaw = Array.isArray(sourceCache.onlineValues) ? sourceCache.onlineValues : null;
-  let historicalRaw = Array.isArray(sourceCache.historicalValues) ? sourceCache.historicalValues : null;
+  const loadedModes = existing?.loadedModes || new Set(
+    [
+      Array.isArray(sourceCache.onlineValues) ? 'live' : '',
+      Array.isArray(sourceCache.historicalValues) ? 'historical' : ''
+    ].filter(Boolean)
+  );
+  let onlineRaw = existing?.live || (Array.isArray(sourceCache.onlineValues) ? sourceCache.onlineValues : null);
+  let historicalRaw = existing?.historical || (Array.isArray(sourceCache.historicalValues) ? sourceCache.historicalValues : null);
   const requests = [];
-  if (!onlineRaw) requests.push(api(`/api/gridvis/projects/${encodeURIComponent(project)}/devices/${encodeURIComponent(id)}/online-values`).then((result) => { onlineRaw = listData(result.data); }));
-  if (!historicalRaw) requests.push(api(`/api/gridvis/projects/${encodeURIComponent(project)}/devices/${encodeURIComponent(id)}/historical-values`).then((result) => { historicalRaw = listData(result.data); }));
+  if (modes.includes('live') && !loadedModes.has('live')) {
+    requests.push(api(`/api/gridvis/projects/${encodeURIComponent(project)}/devices/${encodeURIComponent(id)}/online-values`).then((result) => {
+      onlineRaw = listData(result.data);
+      loadedModes.add('live');
+    }));
+  }
+  if (modes.includes('historical') && !loadedModes.has('historical')) {
+    requests.push(api(`/api/gridvis/projects/${encodeURIComponent(project)}/devices/${encodeURIComponent(id)}/historical-values`).then((result) => {
+      historicalRaw = listData(result.data);
+      loadedModes.add('historical');
+    }));
+  }
   if (requests.length) await Promise.all(requests);
-  const live = (onlineRaw || []).map((item) => normalizeMeasurement(item, 'live'));
-  const historical = mergeHistoricalMeasurements((historicalRaw || []).map((item) => normalizeMeasurement(item, 'historical'))).filter(historicalMeasurementAvailable);
+  const live = loadedModes.has('live') ? (onlineRaw || []).map((item) => normalizeMeasurement(item, 'live')) : (existing?.live || []);
+  const historical = loadedModes.has('historical')
+    ? mergeHistoricalMeasurements((historicalRaw || []).map((item) => normalizeMeasurement(item, 'historical'))).filter(historicalMeasurementAvailable)
+    : (existing?.historical || []);
   const cache = {
     ...structuredClone(sourceCache),
-    onlineValues: live,
-    historicalValues: historical
+    ...(loadedModes.has('live') ? { onlineValues: live } : {}),
+    ...(loadedModes.has('historical') ? { historicalValues: historical } : {})
   };
-  const data = { device, cache, live, historical };
+  const data = { device, cache, live, historical, loadedModes };
   mqttDialogState.deviceData.set(id, data);
   return data;
 }
 
 async function refreshMqttDialogData() {
   const ids = [...mqttDialogState.selectedDeviceIds];
-  mqttDialogState.loading = ids.some((id) => !mqttDialogState.deviceData.has(id));
+  const modes = mqttDialogSelectedModes();
+  mqttDialogState.loading = ids.some((id) => {
+    const data = mqttDialogState.deviceData.get(id);
+    return !data || modes.some((mode) => !data.loadedModes.has(mode));
+  });
   setText('#mqtt-dialog-loading', mqttDialogState.loading ? 'Messwertdefinitionen werden geladen …' : '');
   renderMqttDialogCommonValues();
   updateMqttDialogStatus();
   if (!ids.length) return;
   try {
-    await Promise.all(ids.map((id) => loadMqttDialogDeviceData(state.devices.find((device) => deviceId(device) === id))));
+    await Promise.all(ids.map((id) => loadMqttDialogDeviceData(state.devices.find((device) => deviceId(device) === id), modes)));
     if (mqttDialogState.initialMeasurementKey
       && mqttDialogAvailableMeasurements().some((measurement) => measurementKey(measurement) === mqttDialogState.initialMeasurementKey)) {
       mqttDialogState.selectedKeys.add(mqttDialogState.initialMeasurementKey);
