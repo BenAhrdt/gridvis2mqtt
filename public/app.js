@@ -2854,6 +2854,7 @@ function updateSelectedCounters() {
   const count = hasGlobalSummary ? Number(state.discoveryPreparedCount || 0) : localCount;
   setText('#selected-count', count);
   setText('#info-selected-count', count);
+  setText('#mqtt-nav-count', count);
   setText('#live-selection-status', `${count} ausgewählt`);
   setText('#stat-discovery-detail', count ? 'Topics vorbereitet' : 'Keine Topics vorbereitet');
 }
