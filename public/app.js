@@ -88,6 +88,7 @@ const mqttDialogState = {
   valueSearch: '',
   initialMeasurementKey: '',
   openDeviceGroups: new Set(),
+  openDeviceNodes: new Set(),
   openMeasurementGroups: new Set(),
   openMeasurementSubGroups: new Set(),
   loading: false
@@ -836,7 +837,38 @@ function mqttDialogSelectedMeasurements() {
 }
 
 function mqttDeviceGroupName(device) {
-  return deviceType(device).trim() || 'Weitere Geräte';
+  const text = `${deviceType(device)} ${deviceName(device)}`.toLocaleLowerCase('de');
+  if (/janitza.*umg\s*801|umg\s*801/.test(text)) return 'UMG 801';
+  if (/genericmodbus|modbus/.test(text)) return 'Modbus';
+  if (/externvalues|digital|\bdi\b|eingang/.test(text)) return 'DI';
+  if (/virtual|kpi|virtuell|software|proxmox/.test(text)) return 'VD';
+  return 'Weitere Geräte';
+}
+
+function mqttDeviceTextParts(device) {
+  return deviceName(device).split(/[\\/]/).map((part) => part.trim()).filter(Boolean);
+}
+
+function mqttDeviceDisplayName(device) {
+  const name = deviceLeafName(device);
+  const normalized = name.toLocaleLowerCase('de');
+  if (normalized === 'xxxexternvalues') return 'Externe Werte';
+  if (normalized === 'xxxvirtualkpi') return 'KPI';
+  if (normalized === 'xxxvirtual') return 'Virtuelles Gerät';
+  if (normalized === 'zzgenericmodbus') return 'Modbus-Gerät';
+  return name;
+}
+
+function mqttDeviceDisplayPath(device) {
+  const parts = mqttDeviceTextParts(device);
+  return (parts.length ? parts : [deviceName(device)]).map((part) => {
+    const normalized = part.toLocaleLowerCase('de');
+    if (normalized === 'xxxexternvalues') return 'Externe Werte';
+    if (normalized === 'xxxvirtualkpi') return 'KPI';
+    if (normalized === 'xxxvirtual') return 'Virtuelles Gerät';
+    if (normalized === 'zzgenericmodbus') return 'Modbus-Gerät';
+    return part;
+  }).join(' / ');
 }
 
 function mqttDeviceIcon(device) {
@@ -860,24 +892,134 @@ function mqttDeviceIconMarkup(device) {
   return `<svg class="mqtt-tree-icon mqtt-tree-device-svg mqtt-tree-device-svg-${icon}" viewBox="0 0 24 24" focusable="false" aria-hidden="true">${extra}</svg>`;
 }
 
+function mqttDeviceTree(devices) {
+  const byId = new Map(devices.map((device) => [deviceId(device), device]));
+  const byName = new Map(devices.map((device) => [deviceName(device).toLocaleLowerCase('de'), device]));
+  const children = new Map();
+  const roots = [];
+  for (const device of devices) {
+    const reference = deviceParentReference(device);
+    let parent = reference
+      ? (byId.get(reference) || byName.get(reference.toLocaleLowerCase('de')))
+      : null;
+    if (!parent) parent = inferredDeviceParent(device, devices);
+    if (parent && deviceId(parent) !== deviceId(device)) {
+      const parentId = deviceId(parent);
+      if (!children.has(parentId)) children.set(parentId, []);
+      children.get(parentId).push(device);
+    } else {
+      roots.push(device);
+    }
+  }
+  const sortDevices = (left, right) => compareDeviceText(mqttDeviceDisplayName(left), mqttDeviceDisplayName(right)) || compareDeviceText(deviceId(left), deviceId(right));
+  const build = (device, trail = new Set()) => {
+    const id = deviceId(device);
+    if (trail.has(id)) return { device, children: [] };
+    const nextTrail = new Set(trail).add(id);
+    return {
+      device,
+      children: (children.get(id) || []).sort(sortDevices).map((child) => build(child, nextTrail))
+    };
+  };
+  return roots.sort(sortDevices).map((root) => build(root));
+}
+
+function mqttDeviceTreeContainsQuery(node, query, ancestorMatches = false) {
+  if (!query) return true;
+  const text = `${mqttDeviceDisplayPath(node.device)} ${deviceType(node)} ${deviceId(node.device)}`.toLocaleLowerCase('de');
+  const matches = ancestorMatches || text.includes(query);
+  return matches || node.children.some((child) => mqttDeviceTreeContainsQuery(child, query));
+}
+
+function mqttVisibleDeviceTree(node, query, ancestorMatches = false) {
+  const text = `${mqttDeviceDisplayPath(node.device)} ${deviceType(node)} ${deviceId(node.device)}`.toLocaleLowerCase('de');
+  const matches = ancestorMatches || text.includes(query);
+  const children = node.children
+    .filter((child) => !query || matches || mqttDeviceTreeContainsQuery(child, query))
+    .map((child) => mqttVisibleDeviceTree(child, query, matches));
+  return { device: node.device, children };
+}
+
+function mqttFlattenDeviceTree(nodes, result = []) {
+  for (const node of nodes) {
+    result.push(node.device);
+    mqttFlattenDeviceTree(node.children, result);
+  }
+  return result;
+}
+
+function mqttDeviceSubtreeIds(node, result = []) {
+  result.push(deviceId(node.device));
+  for (const child of node.children) mqttDeviceSubtreeIds(child, result);
+  return result;
+}
+
+function mqttDeviceSelectionMarkup(node, ids) {
+  const selectedCount = ids.filter((id) => mqttDialogState.selectedDeviceIds.has(id)).length;
+  return `<input type="checkbox"${selectedCount === ids.length ? ' checked' : ''}${selectedCount > 0 && selectedCount < ids.length ? ' data-indeterminate="true"' : ''}><span class="mqtt-tree-device-icon">${mqttDeviceIconMarkup(node.device)}</span><span><strong>${escapeHtml(mqttDeviceDisplayName(node.device))}</strong><small>${escapeHtml(mqttDeviceDisplayPath(node.device))} · ID ${escapeHtml(deviceId(node.device))}</small></span>`;
+}
+
+function attachMqttDeviceSelection(input, ids) {
+  input.indeterminate = ids.some((id) => mqttDialogState.selectedDeviceIds.has(id))
+    && !ids.every((id) => mqttDialogState.selectedDeviceIds.has(id));
+  input.addEventListener('click', (event) => event.stopPropagation());
+  input.addEventListener('change', (event) => {
+    for (const id of ids) {
+      if (event.target.checked) mqttDialogState.selectedDeviceIds.add(id);
+      else mqttDialogState.selectedDeviceIds.delete(id);
+    }
+    renderMqttDialogDevices();
+    refreshMqttDialogData().catch(reportBackgroundError);
+  });
+}
+
+function renderMqttDialogDeviceNode(node) {
+  const ids = mqttDeviceSubtreeIds(node);
+  if (node.children.length) {
+    const details = document.createElement('details');
+    details.className = 'mqtt-device-node';
+    const nodeId = deviceId(node.device);
+    details.open = mqttDialogState.openDeviceNodes.has(nodeId);
+    details.addEventListener('toggle', () => {
+      if (details.open) mqttDialogState.openDeviceNodes.add(nodeId);
+      else mqttDialogState.openDeviceNodes.delete(nodeId);
+    });
+    const summary = document.createElement('summary');
+    summary.innerHTML = `<span class="mqtt-tree-toggle" aria-hidden="true">▸</span>${mqttDeviceSelectionMarkup(node, ids)}`;
+    attachMqttDeviceSelection(summary.querySelector('input'), ids);
+    details.append(summary);
+    const children = document.createElement('div');
+    children.className = 'mqtt-device-node-children';
+    children.append(...node.children.map((child) => renderMqttDialogDeviceNode(child)));
+    details.append(children);
+    return details;
+  }
+  const row = document.createElement('label');
+  row.className = 'mqtt-picker-item mqtt-device-item';
+  row.innerHTML = mqttDeviceSelectionMarkup(node, ids);
+  attachMqttDeviceSelection(row.querySelector('input'), ids);
+  return row;
+}
+
 function renderMqttDialogDevices() {
   const list = $('#mqtt-dialog-devices');
   if (!list) return;
   const query = mqttDialogState.deviceSearch.trim().toLocaleLowerCase('de');
-  const devices = state.devices
-    .filter((device) => !query || `${deviceName(device)} ${deviceType(device)} ${deviceId(device)}`.toLocaleLowerCase('de').includes(query))
-    .sort((left, right) => deviceName(left).localeCompare(deviceName(right), 'de', { numeric: true, sensitivity: 'base' }));
-  if (!devices.length) {
+  const roots = mqttDeviceTree(state.devices)
+    .filter((node) => mqttDeviceTreeContainsQuery(node, query))
+    .map((node) => mqttVisibleDeviceTree(node, query));
+  if (!roots.length) {
     list.innerHTML = '<div class="mqtt-picker-empty">Keine passenden Geräte gefunden.</div>';
   } else {
     const groups = new Map();
-    for (const device of devices) {
-      const groupName = mqttDeviceGroupName(device);
+    for (const node of roots) {
+      const groupName = mqttDeviceGroupName(node.device);
       if (!groups.has(groupName)) groups.set(groupName, []);
-      groups.get(groupName).push(device);
+      groups.get(groupName).push(node);
     }
     const groupEntries = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right, 'de', { numeric: true, sensitivity: 'base' }));
-    list.replaceChildren(...groupEntries.map(([groupName, groupDevices]) => {
+    list.replaceChildren(...groupEntries.map(([groupName, groupNodes]) => {
+      const groupDevices = mqttFlattenDeviceTree(groupNodes);
       const group = document.createElement('details');
       group.className = 'mqtt-device-group';
       group.open = mqttDialogState.openDeviceGroups.has(groupName);
@@ -903,19 +1045,7 @@ function renderMqttDialogDevices() {
       group.append(summary);
       const children = document.createElement('div');
       children.className = 'mqtt-device-group-items';
-      children.replaceChildren(...groupDevices.map((device) => {
-        const id = deviceId(device);
-        const row = document.createElement('label');
-        row.className = 'mqtt-picker-item mqtt-device-item';
-        row.innerHTML = `<input type="checkbox" value="${escapeHtml(id)}"${mqttDialogState.selectedDeviceIds.has(id) ? ' checked' : ''}><span class="mqtt-tree-device-icon">${mqttDeviceIconMarkup(device)}</span><span><strong>${escapeHtml(deviceLeafName(device))}</strong><small>${escapeHtml(deviceName(device))} · ID ${escapeHtml(id)}</small></span>`;
-        row.querySelector('input').addEventListener('change', (event) => {
-          if (event.target.checked) mqttDialogState.selectedDeviceIds.add(id);
-          else mqttDialogState.selectedDeviceIds.delete(id);
-          renderMqttDialogDevices();
-          refreshMqttDialogData().catch(reportBackgroundError);
-        });
-        return row;
-      }));
+      children.replaceChildren(...groupNodes.map((node) => renderMqttDialogDeviceNode(node)));
       group.append(children);
       return group;
     }));
@@ -1167,6 +1297,7 @@ function openMqttSelectionDialog({ deviceIdValue = '', mode = 'live', measuremen
   mqttDialogState.valueSearch = '';
   mqttDialogState.initialMeasurementKey = measurementKeyValue;
   mqttDialogState.openDeviceGroups = new Set();
+  mqttDialogState.openDeviceNodes = new Set();
   mqttDialogState.openMeasurementGroups = new Set();
   mqttDialogState.openMeasurementSubGroups = new Set();
   $('#mqtt-dialog-kind').value = mqttDialogState.mode;
