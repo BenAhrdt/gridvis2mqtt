@@ -2369,6 +2369,13 @@ body {
   color: var(--brand-dark);
   font-size: 10px;
 }
+.mqtt-dialog-mode-hint {
+  align-self: center;
+  max-width: 390px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
 .mqtt-picker-grid {
   display: grid;
   grid-template-columns: minmax(230px, .85fr) minmax(300px, 1fr) minmax(250px, .9fr);
@@ -2652,6 +2659,39 @@ body {
   margin-top: 3px;
   color: var(--muted);
   font-size: 9px;
+}
+.mqtt-value-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.mqtt-value-availability {
+  display: inline-flex;
+  gap: 3px;
+}
+.mqtt-availability-badge,
+.mqtt-existing-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  padding: 1px 5px;
+  border: 1px solid #d3dce5;
+  border-radius: 3px;
+  color: #8a98a5;
+  background: #f3f5f7;
+  font-size: 8px;
+  font-weight: 700;
+}
+.mqtt-availability-badge.available {
+  color: #376b78;
+  border-color: #b7dcd9;
+  background: #edf8f6;
+}
+.mqtt-existing-badge {
+  color: #80652e;
+  border-color: #ead8ad;
+  background: #fff8e7;
 }
 .mqtt-picker-empty {
   display: grid;
