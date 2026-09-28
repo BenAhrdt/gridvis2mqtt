@@ -2142,10 +2142,17 @@ body {
   overflow: hidden;
 }
 .mqtt-table-scroll {
+  max-height: min(640px, calc(100dvh - 390px));
   overflow-x: auto;
+  overflow-y: auto;
 }
 .mqtt-overview-table {
   min-width: 940px;
+}
+.mqtt-overview-table thead {
+  position: sticky;
+  z-index: 2;
+  top: 0;
 }
 .mqtt-overview-table td {
   vertical-align: middle;
@@ -2544,6 +2551,9 @@ body {
   .mqtt-overview-toolbar .compact-field,
   .mqtt-dialog-mode-row .field {
     width: 100%;
+  }
+  .mqtt-table-scroll {
+    max-height: 60vh;
   }
   .mqtt-dialog-header,
   .mqtt-dialog-panel,
