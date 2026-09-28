@@ -848,6 +848,30 @@ function mqttOverviewRowFromButton(button) {
   )) || null;
 }
 
+function setMqttOverviewRowBusy(button, busy) {
+  const row = button?.closest('tr');
+  if (!row) return;
+  const controls = row.querySelectorAll('[data-mqtt-row-toggle], [data-mqtt-row-edit], [data-mqtt-row-remove]');
+  if (busy) {
+    button.dataset.previousStatusMarkup = button.innerHTML;
+    button.disabled = true;
+    button.classList.add('pending');
+    button.setAttribute('aria-busy', 'true');
+    button.innerHTML = '<span class="mqtt-status-spinner" aria-hidden="true"></span><span>Wird aktualisiert …</span>';
+    controls.forEach((control) => { control.disabled = true; });
+  } else {
+    const previousMarkup = button.dataset.previousStatusMarkup;
+    if (previousMarkup !== undefined) {
+      button.innerHTML = previousMarkup;
+      delete button.dataset.previousStatusMarkup;
+    }
+    button.disabled = false;
+    button.classList.remove('pending');
+    button.removeAttribute('aria-busy');
+    controls.forEach((control) => { control.disabled = false; });
+  }
+}
+
 async function updateMqttOverviewRow(row, { enabled = null, remove = false } = {}) {
   if (!row) return;
   const project = row.project || $('#project-select')?.value || '';
@@ -6694,7 +6718,10 @@ function attachEvents() {
     const toggle = event.target.closest('[data-mqtt-row-toggle]');
     if (toggle) {
       const row = mqttOverviewRowFromButton(toggle);
-      updateMqttOverviewRow(row, { enabled: toggle.getAttribute('aria-pressed') !== 'true' }).catch(showError);
+      setMqttOverviewRowBusy(toggle, true);
+      updateMqttOverviewRow(row, { enabled: toggle.getAttribute('aria-pressed') !== 'true' })
+        .catch(showError)
+        .finally(() => setMqttOverviewRowBusy(toggle, false));
       return;
     }
     const remove = event.target.closest('[data-mqtt-row-remove]');

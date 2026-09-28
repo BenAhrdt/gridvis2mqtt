@@ -2265,6 +2265,24 @@ body {
 .mqtt-status-toggle.inactive {
   opacity: .78;
 }
+.mqtt-status-toggle.pending {
+  min-width: 125px;
+  color: var(--muted);
+  cursor: wait;
+  opacity: 1;
+}
+.mqtt-status-spinner {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  border: 2px solid #c8d7df;
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: mqtt-status-spin .75s linear infinite;
+}
+@keyframes mqtt-status-spin {
+  to { transform: rotate(360deg); }
+}
 .mqtt-status-toggle:hover .value-status {
   filter: brightness(.96);
 }
