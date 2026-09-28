@@ -91,7 +91,8 @@ const mqttDialogState = {
   openDeviceNodes: new Set(),
   openMeasurementGroups: new Set(),
   openMeasurementSubGroups: new Set(),
-  loading: false
+  loading: false,
+  dataRequestToken: 0
 };
 
 const viewLabels = {
@@ -1394,7 +1395,7 @@ function setMqttDialogTab(tab) {
   });
 }
 
-async function loadMqttDialogDeviceData(device, modes = mqttDialogSelectedModes()) {
+async function loadMqttDialogDeviceData(device, modes = mqttDialogSelectedModes(), requestToken = mqttDialogState.dataRequestToken) {
   const project = $('#project-select')?.value || '';
   const id = deviceId(device);
   if (!project || !id) return null;
@@ -1428,21 +1429,28 @@ async function loadMqttDialogDeviceData(device, modes = mqttDialogSelectedModes(
     }));
   }
   if (requests.length) await Promise.all(requests);
-  const live = loadedModes.has('live') ? (onlineRaw || []).map((item) => normalizeMeasurement(item, 'live')) : (existing?.live || []);
-  const historical = loadedModes.has('historical')
+  if (requestToken !== mqttDialogState.dataRequestToken) return mqttDialogState.deviceData.get(id) || null;
+  const current = mqttDialogState.deviceData.get(id);
+  const mergedLoadedModes = new Set([...(current?.loadedModes || []), ...loadedModes]);
+  const live = mergedLoadedModes.has('live')
+    ? (onlineRaw || current?.live || []).map((item) => normalizeMeasurement(item, 'live'))
+    : (current?.live || existing?.live || []);
+  const historical = mergedLoadedModes.has('historical')
     ? mergeHistoricalMeasurements((historicalRaw || []).map((item) => normalizeMeasurement(item, 'historical'))).filter(historicalMeasurementAvailable)
-    : (existing?.historical || []);
+    : (current?.historical || existing?.historical || []);
   const cache = {
     ...structuredClone(sourceCache),
-    ...(loadedModes.has('live') ? { onlineValues: live } : {}),
-    ...(loadedModes.has('historical') ? { historicalValues: historical } : {})
+    ...structuredClone(current?.cache || {}),
+    ...(mergedLoadedModes.has('live') ? { onlineValues: live } : {}),
+    ...(mergedLoadedModes.has('historical') ? { historicalValues: historical } : {})
   };
-  const data = { device, cache, live, historical, loadedModes };
+  const data = { device: current?.device || device, cache, live, historical, loadedModes: mergedLoadedModes };
   mqttDialogState.deviceData.set(id, data);
   return data;
 }
 
 async function refreshMqttDialogData() {
+  const requestToken = ++mqttDialogState.dataRequestToken;
   const ids = [...mqttDialogState.selectedDeviceIds];
   const modes = mqttDialogSelectedModes();
   mqttDialogState.loading = mqttDialogDataPending();
@@ -1451,13 +1459,15 @@ async function refreshMqttDialogData() {
   updateMqttDialogStatus();
   if (!ids.length) return;
   try {
-    await Promise.all(ids.map((id) => loadMqttDialogDeviceData(state.devices.find((device) => deviceId(device) === id), modes)));
+    await Promise.all(ids.map((id) => loadMqttDialogDeviceData(state.devices.find((device) => deviceId(device) === id), modes, requestToken)));
+    if (requestToken !== mqttDialogState.dataRequestToken) return;
     if (mqttDialogState.initialMeasurementKey
       && mqttDialogAvailableMeasurements().some((measurement) => measurementKey(measurement) === mqttDialogState.initialMeasurementKey)) {
       mqttDialogState.selectedKeys.add(mqttDialogState.initialMeasurementKey);
       mqttDialogState.initialMeasurementKey = '';
     }
   } finally {
+    if (requestToken !== mqttDialogState.dataRequestToken) return;
     mqttDialogState.loading = false;
     setText('#mqtt-dialog-loading', '');
     renderMqttDialogCommonValues();
@@ -1479,6 +1489,7 @@ function openMqttSelectionDialog({ deviceIdValue = '', mode = 'live', measuremen
     return;
   }
   const initialMode = mode === 'historical' ? 'historical' : 'live';
+  mqttDialogState.dataRequestToken += 1;
   mqttDialogState.modes = new Set([initialMode]);
   mqttDialogState.tab = 'selection';
   mqttDialogState.selectedDeviceIds = new Set(deviceIdValue && state.devices.some((device) => deviceId(device) === String(deviceIdValue))
