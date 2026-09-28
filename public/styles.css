@@ -2205,12 +2205,44 @@ body {
 .mqtt-status-cell {
   min-width: 145px;
 }
+.mqtt-status-toggle {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.mqtt-status-toggle:focus-visible,
+.mqtt-row-action:focus-visible,
+.mqtt-row-remove:focus-visible {
+  outline: 2px solid rgba(67, 126, 179, .45);
+  outline-offset: 2px;
+}
+.mqtt-status-toggle.inactive {
+  opacity: .78;
+}
+.mqtt-status-toggle:hover .value-status {
+  filter: brightness(.96);
+}
+.mqtt-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 .mqtt-status-cell .value-status {
   min-height: 0;
 }
 .mqtt-row-action {
   min-height: 29px;
   padding: 0 9px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.mqtt-row-remove {
+  min-height: 29px;
+  padding: 0 8px;
+  color: #a34848;
   font-size: 10px;
   white-space: nowrap;
 }

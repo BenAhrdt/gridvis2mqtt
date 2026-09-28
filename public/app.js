@@ -780,7 +780,8 @@ function renderMqttOverview() {
         ? '<span class="value-status mqtt">MQTT aktiv</span>'
         : '<span class="value-status discovery">Discovery vorbereitet</span>';
       const liveValue = row.mode === 'live' ? mqttOverviewValue(row.values?.live, row.unit) : '';
-      tr.innerHTML = `<td><strong>${escapeHtml(row.deviceName)}</strong><small class="mqtt-table-meta">ID ${escapeHtml(row.deviceId)}</small></td><td><strong>${escapeHtml(row.name)}</strong><small class="mqtt-table-meta">${escapeHtml(row.value)} · ${escapeHtml(row.typeLabel)}${row.unit ? ` · ${escapeHtml(row.unit)}` : ''}</small></td><td><span class="mqtt-mode-badge ${row.mode}">${row.mode === 'historical' ? 'Historie' : 'Live'}</span></td><td><span class="mqtt-live-value">${escapeHtml(row.mode === 'live' ? liveValue : mqttOverviewLatestHistoryValue(row))}</span></td><td>${mqttOverviewRangeMarkup(row)}</td><td><div class="mqtt-status-cell">${status}<small>${escapeHtml(profileText)}</small></div></td><td><button class="button button-quiet mqtt-row-action" type="button" data-mqtt-row-edit data-device-id="${escapeHtml(row.deviceId)}" data-measurement-key="${escapeHtml(row.measurementKey)}" data-mode="${escapeHtml(row.mode)}">Öffnen</button></td>`;
+      const rowData = `data-device-id="${escapeHtml(row.deviceId)}" data-measurement-key="${escapeHtml(row.measurementKey)}" data-mode="${escapeHtml(row.mode)}"`;
+      tr.innerHTML = `<td><strong>${escapeHtml(row.deviceName)}</strong><small class="mqtt-table-meta">ID ${escapeHtml(row.deviceId)}</small></td><td><strong>${escapeHtml(row.name)}</strong><small class="mqtt-table-meta">${escapeHtml(row.value)} · ${escapeHtml(row.typeLabel)}${row.unit ? ` · ${escapeHtml(row.unit)}` : ''}</small></td><td><span class="mqtt-mode-badge ${row.mode}">${row.mode === 'historical' ? 'Historie' : 'Live'}</span></td><td><span class="mqtt-live-value">${escapeHtml(row.mode === 'live' ? liveValue : mqttOverviewLatestHistoryValue(row))}</span></td><td>${mqttOverviewRangeMarkup(row)}</td><td><div class="mqtt-status-cell"><button class="mqtt-status-toggle ${row.active ? 'active' : 'inactive'}" type="button" data-mqtt-row-toggle aria-label="${row.active ? 'MQTT-Veröffentlichung deaktivieren' : 'MQTT-Veröffentlichung aktivieren'}" aria-pressed="${row.active ? 'true' : 'false'}" ${rowData}>${status}</button><small>${escapeHtml(profileText)}</small></div></td><td><div class="mqtt-row-actions"><button class="button button-quiet mqtt-row-action" type="button" data-mqtt-row-edit ${rowData}>Öffnen</button><button class="button button-quiet mqtt-row-remove" type="button" data-mqtt-row-remove aria-label="Messwert ${escapeHtml(row.name)} vollständig entfernen" ${rowData}>Entfernen</button></div></td>`;
       return tr;
     }));
   }
@@ -802,6 +803,81 @@ async function loadMqttOverview({ silent = false } = {}) {
     summary: result.summary && typeof result.summary === 'object' ? result.summary : {}
   };
   renderMqttOverview();
+}
+
+function mqttOverviewRowFromButton(button) {
+  return (state.mqttOverview.rows || []).find((row) => (
+    String(row.deviceId) === String(button.dataset.deviceId)
+    && String(row.measurementKey) === String(button.dataset.measurementKey)
+    && row.mode === button.dataset.mode
+  )) || null;
+}
+
+async function updateMqttOverviewRow(row, { enabled = null, remove = false } = {}) {
+  if (!row) return;
+  const project = row.project || $('#project-select')?.value || '';
+  const id = String(row.deviceId || '');
+  if (!project || !id) return;
+  markMeasurementMutation();
+  await flushUiState();
+  const result = await api(`/api/state/device?project=${encodeURIComponent(project)}&deviceId=${encodeURIComponent(id)}`);
+  const cache = structuredClone(result.data?.measurementCache || {});
+  const historical = row.mode === 'historical';
+  const values = historical ? cache.historicalValues || [] : cache.onlineValues || [];
+  const measurement = values.find((item) => measurementKey(item) === row.measurementKey);
+  if (!measurement) {
+    showToast('Der Messwert ist im Gerätezustand nicht mehr verfügbar.', 'warning');
+    return;
+  }
+  const assignmentField = historical ? 'historicalMqttAssignments' : 'mqttAssignments';
+  const activeField = historical ? 'historicalMqttActiveAssignments' : 'mqttActiveAssignments';
+  const selectedField = historical ? 'historicalSelectedMeasurements' : 'selectedMeasurements';
+  const retainField = historical ? 'historicalRetainAssignments' : 'mqttRetainAssignments';
+  const key = measurementKey(measurement);
+  cache[assignmentField] = { ...(cache[assignmentField] || {}) };
+  cache[activeField] = { ...(cache[activeField] || {}) };
+  cache[retainField] = { ...(cache[retainField] || {}) };
+  cache[selectedField] = Array.isArray(cache[selectedField]) ? cache[selectedField] : [];
+
+  if (remove) {
+    delete cache[assignmentField][key];
+    delete cache[activeField][key];
+    delete cache[retainField][key];
+    cache[selectedField] = cache[selectedField].filter((item) => measurementKey(item) !== key);
+    if (historical) {
+      cache.historicalSettings = { ...(cache.historicalSettings || {}) };
+      delete cache.historicalSettings[key];
+      const prefix = `${id}:${key}`;
+      cache.historicalResults = Object.fromEntries(Object.entries(cache.historicalResults || {})
+        .filter(([resultKey]) => resultKey !== prefix && !resultKey.startsWith(`${prefix}:`)));
+    } else {
+      cache.displayedMeasurements = (Array.isArray(cache.displayedMeasurements) ? cache.displayedMeasurements : [])
+        .filter((item) => measurementKey(item) !== key);
+      cache.liveResults = (Array.isArray(cache.liveResults) ? cache.liveResults : [])
+        .filter((item) => !liveResultMatches(item, measurement, id));
+    }
+  } else if (enabled) {
+    const profileIds = Array.isArray(cache[assignmentField][key]) && cache[assignmentField][key].length
+      ? cache[assignmentField][key]
+      : (Array.isArray(row.profileIds) && row.profileIds.length ? row.profileIds : [defaultMqttProfileId()]);
+    cache[assignmentField][key] = [...new Set(profileIds)];
+    cache[activeField][key] = [...new Set(profileIds)];
+    cache[selectedField] = appendUniqueMeasurement(cache[selectedField], measurement);
+    if (!historical) cache.displayedMeasurements = appendUniqueMeasurement(cache.displayedMeasurements, measurement);
+  } else {
+    delete cache[activeField][key];
+  }
+
+  const cacheKeyValue = cacheKey(project, id);
+  state.measurementCache[cacheKeyValue] = cache;
+  await persistBackendDeviceState(project, id, cache);
+  if (isLoadedDeviceState(project, id)) restoreMeasurementCache(project, id);
+  writeUiCache();
+  await flushUiState();
+  await loadMqttOverview({ silent: true });
+  showToast(remove
+    ? 'Messwert wurde vollständig entfernt.'
+    : enabled ? 'MQTT-Veröffentlichung aktiviert.' : 'MQTT-Veröffentlichung deaktiviert.', 'success');
 }
 
 function mqttDialogSelectedMeasurementKeys() {
@@ -6433,6 +6509,19 @@ function attachEvents() {
   $('#mqtt-overview-status')?.addEventListener('change', renderMqttOverview);
   $('#mqtt-overview-search')?.addEventListener('input', renderMqttOverview);
   $('#mqtt-overview-table-body')?.addEventListener('click', (event) => {
+    const toggle = event.target.closest('[data-mqtt-row-toggle]');
+    if (toggle) {
+      const row = mqttOverviewRowFromButton(toggle);
+      updateMqttOverviewRow(row, { enabled: toggle.getAttribute('aria-pressed') !== 'true' }).catch(showError);
+      return;
+    }
+    const remove = event.target.closest('[data-mqtt-row-remove]');
+    if (remove) {
+      const row = mqttOverviewRowFromButton(remove);
+      if (!row || !window.confirm(`„${row.name}“ (${row.mode === 'historical' ? 'Historie' : 'Live'}) wirklich vollständig entfernen?`)) return;
+      updateMqttOverviewRow(row, { remove: true }).catch(showError);
+      return;
+    }
     const button = event.target.closest('[data-mqtt-row-edit]');
     if (!button) return;
     openMqttSelectionDialog({ deviceIdValue: button.dataset.deviceId, measurementKeyValue: button.dataset.measurementKey, mode: button.dataset.mode });
