@@ -2767,6 +2767,20 @@ body {
   font-size: 10px;
   font-weight: 750;
 }
+.mqtt-dialog-comparison {
+  margin-top: 15px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.mqtt-dialog-comparison .history-settings-title {
+  margin-bottom: 7px;
+}
+.mqtt-dialog-comparison .history-comparison-row {
+  grid-template-columns: minmax(0, 1.35fr) 52px minmax(0, .9fr) 28px;
+}
+.mqtt-dialog-comparison .form-hint {
+  margin: 7px 0 0;
+}
 .mqtt-dialog-footer {
   display: flex;
   align-items: center;

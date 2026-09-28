@@ -1296,7 +1296,14 @@ function updateMqttDialogAdvanced() {
     historyInterval.replaceChildren(...HISTORY_CYCLE_OPTIONS.map(([seconds, label]) => new Option(label, String(seconds))));
     historyInterval.value = '900';
   }
-  renderHistoryRangeOptions($('#mqtt-dialog-history-ranges'), ['today'], 'mqtt-dialog-history-range');
+  const historyRanges = $('#mqtt-dialog-history-ranges');
+  if (historyRanges && !historyRanges.children.length) {
+    renderHistoryRangeOptions(historyRanges, ['today'], 'mqtt-dialog-history-range');
+  }
+  const historyComparisons = $('#mqtt-dialog-history-comparisons');
+  if (historyComparisons && !historyComparisons.children.length) {
+    renderHistoryComparisons(historyComparisons, []);
+  }
 }
 
 function updateMqttDialogStatus() {
@@ -1405,6 +1412,7 @@ function openMqttSelectionDialog({ deviceIdValue = '', mode = 'live', measuremen
   $('#mqtt-dialog-retain').checked = false;
   $('#mqtt-dialog-overwrite').checked = false;
   renderHistoryRangeOptions($('#mqtt-dialog-history-ranges'), ['today'], 'mqtt-dialog-history-range');
+  renderHistoryComparisons($('#mqtt-dialog-history-comparisons'), []);
   setMqttDialogTab('selection');
   renderMqttDialogDevices();
   renderMqttDialogCommonValues();
@@ -1457,6 +1465,7 @@ async function saveMqttSelection() {
   const liveInterval = Number($('#mqtt-dialog-live-interval').value) || 0;
   const historyInterval = normalizeHistoryRefreshInterval($('#mqtt-dialog-history-interval').value);
   const historyRanges = selectedHistoryRanges($('#mqtt-dialog-history-ranges'));
+  const historyComparisons = normalizeHistoryComparisons(selectedHistoryComparisons($('#mqtt-dialog-history-comparisons')));
   let saved = 0;
   let skipped = 0;
   try {
@@ -1491,7 +1500,11 @@ async function saveMqttSelection() {
         if (retain) cache[retainField][key] = true;
         else delete cache[retainField][key];
         if (historical) {
-          cache.historicalSettings[key] = { interval: historyInterval, ranges: historyRanges };
+          cache.historicalSettings[key] = {
+            interval: historyInterval,
+            ranges: historyRanges,
+            comparisons: historyComparisons
+          };
         } else if (liveInterval > 0 || overwrite) {
           const refreshKey = cacheKey(project, id);
           if (liveInterval > 0) state.deviceRefreshIntervals[refreshKey] = liveInterval;
@@ -6257,6 +6270,33 @@ function attachEvents() {
     renderMqttDialogCommonValues();
     renderMqttDialogSelectedValues();
     updateMqttDialogStatus();
+  });
+  $('#add-mqtt-dialog-history-comparison')?.addEventListener('click', () => {
+    const container = $('#mqtt-dialog-history-comparisons');
+    const comparisons = selectedHistoryComparisons(container);
+    renderHistoryComparisons(container, [...comparisons, nextHistoryComparison(comparisons)]);
+  });
+  $('#mqtt-dialog-history-comparisons')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-remove-comparison]');
+    if (!button) return;
+    const index = Number(button.dataset.removeComparison);
+    const container = $('#mqtt-dialog-history-comparisons');
+    const comparisons = selectedHistoryComparisons(container);
+    if (!Number.isInteger(index) || index < 0 || index >= comparisons.length) return;
+    comparisons.splice(index, 1);
+    renderHistoryComparisons(container, comparisons);
+  });
+  $('#mqtt-dialog-history-comparisons')?.addEventListener('change', (event) => {
+    const row = event.target.closest('.history-comparison-row');
+    if (!row) return;
+    const index = Number(row.dataset.index);
+    const container = $('#mqtt-dialog-history-comparisons');
+    const comparisons = selectedHistoryComparisons(container);
+    if (!Number.isInteger(index) || !comparisons[index]) return;
+    if (event.target.dataset.comparisonUnit) comparisons[index].unit = event.target.value;
+    if (event.target.dataset.comparisonRange) comparisons[index].range = event.target.value;
+    if (event.target.matches('input')) comparisons[index].amount = Number(event.target.value);
+    renderHistoryComparisons(container, normalizeHistoryComparisons(comparisons));
   });
   $('#mqtt-selection-save')?.addEventListener('click', () => saveMqttSelection().catch(showError));
   $('#gridvis-form').addEventListener('submit', (event) => { event.preventDefault(); saveConnection().catch(showError); });
