@@ -810,6 +810,14 @@ function mqttDialogSelectedModes() {
   return ['live', 'historical'].filter((mode) => mqttDialogState.modes.has(mode));
 }
 
+function mqttDialogDataPending() {
+  const modes = mqttDialogSelectedModes();
+  return [...mqttDialogState.selectedDeviceIds].some((id) => {
+    const data = mqttDialogState.deviceData.get(id);
+    return !data || modes.some((mode) => !data.loadedModes.has(mode));
+  });
+}
+
 function mqttDialogModeLabel(mode) {
   return mode === 'historical' ? 'Historie' : 'Live';
 }
@@ -1212,7 +1220,7 @@ function renderMqttDialogCommonValues() {
   const filtered = values.filter((measurement) => !query || `${measurementDisplayName(measurement)} ${measurement.value} ${measurement.type} ${measurement.typeLabel}`.toLocaleLowerCase('de').includes(query));
   if (!mqttDialogState.selectedDeviceIds.size) {
     list.innerHTML = '<div class="mqtt-picker-empty">Wähle links mindestens ein Gerät aus.</div>';
-  } else if (mqttDialogState.loading && !values.length) {
+  } else if (mqttDialogState.loading && mqttDialogDataPending()) {
     list.innerHTML = '<div class="mqtt-picker-empty">Messwertdefinitionen werden geladen …</div>';
   } else if (!filtered.length) {
     list.innerHTML = '<div class="mqtt-picker-empty">Keine gemeinsamen Messwerte gefunden.</div>';
@@ -1407,10 +1415,7 @@ async function loadMqttDialogDeviceData(device, modes = mqttDialogSelectedModes(
 async function refreshMqttDialogData() {
   const ids = [...mqttDialogState.selectedDeviceIds];
   const modes = mqttDialogSelectedModes();
-  mqttDialogState.loading = ids.some((id) => {
-    const data = mqttDialogState.deviceData.get(id);
-    return !data || modes.some((mode) => !data.loadedModes.has(mode));
-  });
+  mqttDialogState.loading = mqttDialogDataPending();
   setText('#mqtt-dialog-loading', mqttDialogState.loading ? 'Messwertdefinitionen werden geladen …' : '');
   renderMqttDialogCommonValues();
   updateMqttDialogStatus();
@@ -6331,9 +6336,7 @@ function attachEvents() {
     }
     mqttDialogState.modes = new Set($$('[data-mqtt-dialog-mode]:checked').map((checkbox) => checkbox.value));
     updateMqttDialogAdvanced();
-    renderMqttDialogCommonValues();
-    renderMqttDialogSelectedValues();
-    updateMqttDialogStatus();
+    refreshMqttDialogData().catch(reportBackgroundError);
   }));
   $('#mqtt-dialog-device-search')?.addEventListener('input', (event) => {
     mqttDialogState.deviceSearch = event.target.value;
