@@ -1009,11 +1009,12 @@ function attachMqttDeviceSelection(input, ids) {
   });
 }
 
-function renderMqttDialogDeviceNode(node) {
+function renderMqttDialogDeviceNode(node, depth = 0) {
   const ids = mqttDeviceSubtreeIds(node);
   if (node.children.length) {
     const details = document.createElement('details');
     details.className = 'mqtt-device-node';
+    details.style.setProperty('--mqtt-device-indent', `${10 + (depth * 20)}px`);
     const nodeId = deviceId(node.device);
     details.open = mqttDialogState.openDeviceNodes.has(nodeId);
     details.addEventListener('toggle', () => {
@@ -1027,12 +1028,13 @@ function renderMqttDialogDeviceNode(node) {
     details.append(summary);
     const children = document.createElement('div');
     children.className = 'mqtt-device-node-children';
-    children.append(...node.children.map((child) => renderMqttDialogDeviceNode(child)));
+    children.append(...node.children.map((child) => renderMqttDialogDeviceNode(child, depth + 1)));
     details.append(children);
     return details;
   }
   const row = document.createElement('label');
   row.className = 'mqtt-picker-item mqtt-device-item';
+  row.style.setProperty('--mqtt-device-indent', `${10 + (depth * 20)}px`);
   row.innerHTML = mqttDeviceSelectionMarkup(node, ids);
   wireMqttDeviceIcon(row.querySelector('.mqtt-tree-device-icon'), node.device);
   attachMqttDeviceSelection(row.querySelector('input'), ids);
@@ -1083,7 +1085,7 @@ function renderMqttDialogDevices() {
       group.append(summary);
       const children = document.createElement('div');
       children.className = 'mqtt-device-group-items';
-      children.replaceChildren(...groupNodes.map((node) => renderMqttDialogDeviceNode(node)));
+      children.replaceChildren(...groupNodes.map((node) => renderMqttDialogDeviceNode(node, 0)));
       group.append(children);
       return group;
     }));

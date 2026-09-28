@@ -2568,17 +2568,12 @@ body {
 .mqtt-tree-device-svg-virtual {
   color: #7667a5;
 }
+.mqtt-device-node > summary,
 .mqtt-device-group-items .mqtt-device-item {
-  padding-left: 10px;
-}
-.mqtt-device-group-items > .mqtt-device-node > summary {
-  padding-left: 10px;
+  padding-left: var(--mqtt-device-indent, 10px);
 }
 .mqtt-device-node-children {
-  padding-left: 18px;
-}
-.mqtt-device-node-children > .mqtt-device-node > summary {
-  padding-left: 10px;
+  padding-left: 0;
 }
 .mqtt-device-node > summary > span:last-child {
   min-width: 0;
