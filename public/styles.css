@@ -2255,7 +2255,6 @@ body {
 }
 
 .mqtt-selection-dialog {
-  display: flex;
   flex-direction: column;
   position: fixed;
   z-index: 1000;
@@ -2274,6 +2273,12 @@ body {
   color: var(--ink);
   background: var(--surface);
   box-shadow: 0 22px 70px rgba(16, 25, 35, .3);
+}
+.mqtt-selection-dialog[open] {
+  display: flex;
+}
+.mqtt-selection-dialog:not([open]) {
+  display: none;
 }
 .mqtt-selection-dialog::backdrop {
   background: rgba(16, 25, 35, .38);
