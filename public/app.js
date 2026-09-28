@@ -6719,9 +6719,18 @@ function attachEvents() {
     if (toggle) {
       const row = mqttOverviewRowFromButton(toggle);
       setMqttOverviewRowBusy(toggle, true);
-      updateMqttOverviewRow(row, { enabled: toggle.getAttribute('aria-pressed') !== 'true' })
-        .catch(showError)
-        .finally(() => setMqttOverviewRowBusy(toggle, false));
+      showToast('MQTT-Status wird aktualisiert …', 'warning');
+      await new Promise((resolve) => {
+        if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(resolve);
+        else window.setTimeout(resolve, 0);
+      });
+      try {
+        await updateMqttOverviewRow(row, { enabled: toggle.getAttribute('aria-pressed') !== 'true' });
+      } catch (error) {
+        showError(error);
+      } finally {
+        setMqttOverviewRowBusy(toggle, false);
+      }
       return;
     }
     const remove = event.target.closest('[data-mqtt-row-remove]');
