@@ -892,6 +892,22 @@ function mqttDeviceIconMarkup(device) {
   return `<svg class="mqtt-tree-icon mqtt-tree-device-svg mqtt-tree-device-svg-${icon}" viewBox="0 0 24 24" focusable="false" aria-hidden="true">${extra}</svg>`;
 }
 
+function mqttDeviceIconMarkupWithSource(device) {
+  const source = deviceIconSource(device);
+  return source
+    ? `<img class="mqtt-tree-device-image" data-mqtt-device-icon src="${escapeHtml(source)}" alt="" loading="lazy">`
+    : mqttDeviceIconMarkup(device);
+}
+
+function wireMqttDeviceIcon(container, device) {
+  const image = container?.querySelector('[data-mqtt-device-icon]');
+  if (!image) return;
+  image.addEventListener('error', () => {
+    container.replaceChildren();
+    container.insertAdjacentHTML('beforeend', mqttDeviceIconMarkup(device));
+  }, { once: true });
+}
+
 function mqttDeviceTree(devices) {
   const byId = new Map(devices.map((device) => [deviceId(device), device]));
   const byName = new Map(devices.map((device) => [deviceName(device).toLocaleLowerCase('de'), device]));
@@ -956,7 +972,7 @@ function mqttDeviceSubtreeIds(node, result = []) {
 
 function mqttDeviceSelectionMarkup(node, ids) {
   const selectedCount = ids.filter((id) => mqttDialogState.selectedDeviceIds.has(id)).length;
-  return `<input type="checkbox"${selectedCount === ids.length ? ' checked' : ''}${selectedCount > 0 && selectedCount < ids.length ? ' data-indeterminate="true"' : ''}><span class="mqtt-tree-device-icon">${mqttDeviceIconMarkup(node.device)}</span><span><strong>${escapeHtml(mqttDeviceDisplayName(node.device))}</strong><small>${escapeHtml(mqttDeviceDisplayPath(node.device))} · ID ${escapeHtml(deviceId(node.device))}</small></span>`;
+  return `<input type="checkbox"${selectedCount === ids.length ? ' checked' : ''}${selectedCount > 0 && selectedCount < ids.length ? ' data-indeterminate="true"' : ''}><span class="mqtt-tree-device-icon">${mqttDeviceIconMarkupWithSource(node.device)}</span><span><strong>${escapeHtml(mqttDeviceDisplayName(node.device))}</strong><small>${escapeHtml(mqttDeviceDisplayPath(node.device))} · ID ${escapeHtml(deviceId(node.device))}</small></span>`;
 }
 
 function attachMqttDeviceSelection(input, ids) {
@@ -986,6 +1002,7 @@ function renderMqttDialogDeviceNode(node) {
     });
     const summary = document.createElement('summary');
     summary.innerHTML = `<span class="mqtt-tree-toggle" aria-hidden="true">▸</span>${mqttDeviceSelectionMarkup(node, ids)}`;
+    wireMqttDeviceIcon(summary.querySelector('.mqtt-tree-device-icon'), node.device);
     attachMqttDeviceSelection(summary.querySelector('input'), ids);
     details.append(summary);
     const children = document.createElement('div');
@@ -997,6 +1014,7 @@ function renderMqttDialogDeviceNode(node) {
   const row = document.createElement('label');
   row.className = 'mqtt-picker-item mqtt-device-item';
   row.innerHTML = mqttDeviceSelectionMarkup(node, ids);
+  wireMqttDeviceIcon(row.querySelector('.mqtt-tree-device-icon'), node.device);
   attachMqttDeviceSelection(row.querySelector('input'), ids);
   return row;
 }

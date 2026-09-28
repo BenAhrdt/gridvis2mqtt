@@ -2527,9 +2527,16 @@ body {
 }
 .mqtt-tree-icon {
   display: block;
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   margin: 0 auto;
+}
+.mqtt-tree-device-image {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 0 auto;
+  object-fit: contain;
 }
 .mqtt-tree-folder-svg {
   fill: currentColor;
@@ -2562,13 +2569,13 @@ body {
   color: #7667a5;
 }
 .mqtt-device-group-items .mqtt-device-item {
-  padding-left: 28px;
+  padding-left: 10px;
 }
 .mqtt-device-group-items > .mqtt-device-node > summary {
-  padding-left: 28px;
+  padding-left: 10px;
 }
 .mqtt-device-node-children {
-  padding-left: 22px;
+  padding-left: 18px;
 }
 .mqtt-device-node-children > .mqtt-device-node > summary {
   padding-left: 10px;
