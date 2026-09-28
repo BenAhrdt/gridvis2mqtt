@@ -832,6 +832,19 @@ function mqttDialogSelectedMeasurements() {
   return mqttDialogAvailableMeasurements().filter((measurement) => selectedKeys.has(measurementKey(measurement)));
 }
 
+function mqttDeviceGroupName(device) {
+  return deviceType(device).trim() || 'Weitere Geräte';
+}
+
+function mqttDeviceIcon(device) {
+  const text = `${deviceType(device)} ${deviceName(device)}`.toLocaleLowerCase('de');
+  if (/modbus/.test(text)) return '⌘';
+  if (/digital|\bdi\b|eingang/.test(text)) return '⌁';
+  if (/umg|janitza|messgerät|meter/.test(text)) return '▦';
+  if (/virtu|software|proxmox/.test(text)) return '◌';
+  return '▣';
+}
+
 function renderMqttDialogDevices() {
   const list = $('#mqtt-dialog-devices');
   if (!list) return;
@@ -842,21 +855,86 @@ function renderMqttDialogDevices() {
   if (!devices.length) {
     list.innerHTML = '<div class="mqtt-picker-empty">Keine passenden Geräte gefunden.</div>';
   } else {
-    list.replaceChildren(...devices.map((device) => {
-      const id = deviceId(device);
-      const row = document.createElement('label');
-      row.className = 'mqtt-picker-item mqtt-device-item';
-      row.innerHTML = `<input type="checkbox" value="${escapeHtml(id)}"${mqttDialogState.selectedDeviceIds.has(id) ? ' checked' : ''}><span><strong>${escapeHtml(deviceName(device))}</strong><small>${escapeHtml(deviceType(device))} · ID ${escapeHtml(id)}</small></span>`;
-      row.querySelector('input').addEventListener('change', (event) => {
-        if (event.target.checked) mqttDialogState.selectedDeviceIds.add(id);
-        else mqttDialogState.selectedDeviceIds.delete(id);
+    const groups = new Map();
+    for (const device of devices) {
+      const groupName = mqttDeviceGroupName(device);
+      if (!groups.has(groupName)) groups.set(groupName, []);
+      groups.get(groupName).push(device);
+    }
+    const groupEntries = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right, 'de', { numeric: true, sensitivity: 'base' }));
+    list.replaceChildren(...groupEntries.map(([groupName, groupDevices]) => {
+      const group = document.createElement('details');
+      group.className = 'mqtt-device-group';
+      group.open = true;
+      const selectedCount = groupDevices.filter((device) => mqttDialogState.selectedDeviceIds.has(deviceId(device))).length;
+      const summary = document.createElement('summary');
+      summary.innerHTML = `<input class="mqtt-tree-group-check" type="checkbox"${selectedCount === groupDevices.length ? ' checked' : ''}${selectedCount > 0 && selectedCount < groupDevices.length ? ' data-indeterminate="true"' : ''}><span class="mqtt-tree-folder-icon" aria-hidden="true">▰</span><strong>${escapeHtml(groupName)}</strong><small>${groupDevices.length}</small>`;
+      const groupCheckbox = summary.querySelector('input');
+      groupCheckbox.indeterminate = selectedCount > 0 && selectedCount < groupDevices.length;
+      groupCheckbox.addEventListener('click', (event) => event.stopPropagation());
+      groupCheckbox.addEventListener('change', (event) => {
+        for (const device of groupDevices) {
+          const id = deviceId(device);
+          if (event.target.checked) mqttDialogState.selectedDeviceIds.add(id);
+          else mqttDialogState.selectedDeviceIds.delete(id);
+        }
         renderMqttDialogDevices();
         refreshMqttDialogData().catch(reportBackgroundError);
       });
-      return row;
+      group.append(summary);
+      const children = document.createElement('div');
+      children.className = 'mqtt-device-group-items';
+      children.replaceChildren(...groupDevices.map((device) => {
+        const id = deviceId(device);
+        const row = document.createElement('label');
+        row.className = 'mqtt-picker-item mqtt-device-item';
+        row.innerHTML = `<input type="checkbox" value="${escapeHtml(id)}"${mqttDialogState.selectedDeviceIds.has(id) ? ' checked' : ''}><span class="mqtt-tree-device-icon" aria-hidden="true">${mqttDeviceIcon(device)}</span><span><strong>${escapeHtml(deviceLeafName(device))}</strong><small>${escapeHtml(deviceName(device))} · ID ${escapeHtml(id)}</small></span>`;
+        row.querySelector('input').addEventListener('change', (event) => {
+          if (event.target.checked) mqttDialogState.selectedDeviceIds.add(id);
+          else mqttDialogState.selectedDeviceIds.delete(id);
+          renderMqttDialogDevices();
+          refreshMqttDialogData().catch(reportBackgroundError);
+        });
+        return row;
+      }));
+      group.append(children);
+      return group;
     }));
   }
   setText('#mqtt-dialog-device-count', `${mqttDialogState.selectedDeviceIds.size} ausgewählt`);
+}
+
+function mqttMeasurementGroup(measurement) {
+  const text = `${measurementDisplayName(measurement)} ${measurement.value || ''} ${measurement.type || ''} ${measurement.typeLabel || ''}`.toLocaleLowerCase('de');
+  if (/spannung|voltage|u_effective|u_/.test(text)) return { group: 'Spannung', subGroup: '' };
+  if (/strom|current|i_effective|i_/.test(text)) return { group: 'Strom', subGroup: '' };
+  if (/frequenz|frequency|freq/.test(text)) return { group: 'Frequenz', subGroup: '' };
+  if (/leistung|power|watt|wirkleistung|p_/.test(text)) return { group: 'Leistung', subGroup: '' };
+  if (/energie|energy|arbeit|consum|deliver|supply|verbrauch|blindarbeit|reactive/.test(text)) {
+    if (/induktiv/.test(text)) return { group: 'Elektrische Energie', subGroup: 'Bezogene induktive Blindarbeit' };
+    if (/kapazitiv/.test(text)) return { group: 'Elektrische Energie', subGroup: 'Bezogene kapazitive Blindarbeit' };
+    if (/blindarbeit|reactive/.test(text)) return { group: 'Elektrische Energie', subGroup: 'Blindarbeit' };
+    if (/geliefer|deliver|supply/.test(text)) return { group: 'Elektrische Energie', subGroup: 'Gelieferte Wirkarbeit' };
+    if (/bezogen|consum|verbrauch|import/.test(text)) return { group: 'Elektrische Energie', subGroup: 'Bezogene Wirkarbeit' };
+    return { group: 'Elektrische Energie', subGroup: 'Wirkarbeit' };
+  }
+  return { group: 'Weitere Messwerte', subGroup: '' };
+}
+
+function renderMqttDialogMeasurementItem(measurement) {
+  const key = measurementKey(measurement);
+  const row = document.createElement('label');
+  row.className = 'mqtt-picker-item mqtt-value-item';
+  row.innerHTML = `<input type="checkbox"${mqttDialogState.selectedKeys.has(`${mqttDialogState.mode}:${key}`) ? ' checked' : ''}><span><strong>${escapeHtml(measurementDisplayName(measurement))}</strong><small>${escapeHtml(measurement.value)} · ${escapeHtml(measurement.typeLabel || measurement.type)}${measurement.unit ? ` · ${escapeHtml(measurement.unit)}` : ''}</small></span>`;
+  row.querySelector('input').addEventListener('change', (event) => {
+    const selectedKey = `${mqttDialogState.mode}:${key}`;
+    if (event.target.checked) mqttDialogState.selectedKeys.add(selectedKey);
+    else mqttDialogState.selectedKeys.delete(selectedKey);
+    renderMqttDialogCommonValues();
+    renderMqttDialogSelectedValues();
+    updateMqttDialogStatus();
+  });
+  return row;
 }
 
 function renderMqttDialogCommonValues() {
@@ -877,20 +955,48 @@ function renderMqttDialogCommonValues() {
   } else if (!filtered.length) {
     list.innerHTML = '<div class="mqtt-picker-empty">Keine gemeinsamen Messwerte gefunden.</div>';
   } else {
-    list.replaceChildren(...filtered.map((measurement) => {
-      const key = measurementKey(measurement);
-      const row = document.createElement('label');
-      row.className = 'mqtt-picker-item mqtt-value-item';
-      row.innerHTML = `<input type="checkbox"${mqttDialogState.selectedKeys.has(`${mqttDialogState.mode}:${key}`) ? ' checked' : ''}><span><strong>${escapeHtml(measurementDisplayName(measurement))}</strong><small>${escapeHtml(measurement.value)} · ${escapeHtml(measurement.typeLabel || measurement.type)}${measurement.unit ? ` · ${escapeHtml(measurement.unit)}` : ''}</small></span>`;
-      row.querySelector('input').addEventListener('change', (event) => {
-        const selectedKey = `${mqttDialogState.mode}:${key}`;
-        if (event.target.checked) mqttDialogState.selectedKeys.add(selectedKey);
-        else mqttDialogState.selectedKeys.delete(selectedKey);
-        renderMqttDialogCommonValues();
-        renderMqttDialogSelectedValues();
-        updateMqttDialogStatus();
+    const groups = new Map();
+    for (const measurement of filtered) {
+      const category = mqttMeasurementGroup(measurement);
+      if (!groups.has(category.group)) groups.set(category.group, new Map());
+      const subGroups = groups.get(category.group);
+      if (!subGroups.has(category.subGroup)) subGroups.set(category.subGroup, []);
+      subGroups.get(category.subGroup).push(measurement);
+    }
+    const groupOrder = ['Spannung', 'Strom', 'Frequenz', 'Leistung', 'Elektrische Energie', 'Weitere Messwerte'];
+    const sortedGroups = [...groups.entries()].sort(([left], [right]) => {
+      const leftIndex = groupOrder.indexOf(left);
+      const rightIndex = groupOrder.indexOf(right);
+      return (leftIndex < 0 ? groupOrder.length : leftIndex) - (rightIndex < 0 ? groupOrder.length : rightIndex) || left.localeCompare(right, 'de');
+    });
+    list.replaceChildren(...sortedGroups.map(([groupName, subGroups]) => {
+      const group = document.createElement('details');
+      group.className = 'mqtt-measurement-group';
+      group.open = true;
+      const groupCount = [...subGroups.values()].reduce((sum, entries) => sum + entries.length, 0);
+      const summary = document.createElement('summary');
+      summary.innerHTML = `<span class="mqtt-tree-toggle" aria-hidden="true">▸</span><span class="mqtt-tree-folder-icon" aria-hidden="true">▰</span><strong>${escapeHtml(groupName)}</strong><small>${groupCount}</small>`;
+      group.append(summary);
+      const sortedSubGroups = [...subGroups.entries()].sort(([left], [right]) => {
+        const order = ['Wirkarbeit', 'Bezogene Wirkarbeit', 'Gelieferte Wirkarbeit', 'Bezogene induktive Blindarbeit', 'Bezogene kapazitive Blindarbeit', 'Blindarbeit'];
+        return (order.indexOf(left) < 0 ? order.length : order.indexOf(left)) - (order.indexOf(right) < 0 ? order.length : order.indexOf(right)) || left.localeCompare(right, 'de');
       });
-      return row;
+      for (const [subGroupName, measurements] of sortedSubGroups) {
+        const entries = measurements.sort((left, right) => measurementDisplayName(left).localeCompare(measurementDisplayName(right), 'de', { numeric: true, sensitivity: 'base' }));
+        if (subGroupName) {
+          const subGroup = document.createElement('details');
+          subGroup.className = 'mqtt-measurement-subgroup';
+          subGroup.open = true;
+          const subSummary = document.createElement('summary');
+          subSummary.innerHTML = `<span class="mqtt-tree-toggle" aria-hidden="true">▸</span><span class="mqtt-tree-folder-icon" aria-hidden="true">▰</span><strong>${escapeHtml(subGroupName)}</strong><small>${entries.length}</small>`;
+          subGroup.append(subSummary);
+          subGroup.append(...entries.map((measurement) => renderMqttDialogMeasurementItem(measurement)));
+          group.append(subGroup);
+        } else {
+          group.append(...entries.map((measurement) => renderMqttDialogMeasurementItem(measurement)));
+        }
+      }
+      return group;
     }));
   }
   setText('#mqtt-dialog-common-count', `${values.length} verfügbar`);
