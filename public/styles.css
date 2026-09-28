@@ -2347,8 +2347,35 @@ body {
   min-height: 48px;
   margin-bottom: 12px;
 }
-.mqtt-dialog-mode-row .field {
-  width: 220px;
+.mqtt-dialog-mode-field {
+  display: grid;
+  gap: 7px;
+  width: 250px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.mqtt-dialog-mode-options {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-dark);
+  border-radius: 4px;
+  color: var(--ink);
+  background: #fff;
+}
+.mqtt-dialog-mode-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.mqtt-dialog-mode-options input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--brand);
 }
 .mqtt-dialog-recorded {
   display: inline-flex;
@@ -2825,7 +2852,7 @@ body {
     align-items: stretch;
   }
   .mqtt-overview-toolbar .compact-field,
-  .mqtt-dialog-mode-row .field {
+  .mqtt-dialog-mode-field {
     width: 100%;
   }
   .mqtt-table-scroll {
