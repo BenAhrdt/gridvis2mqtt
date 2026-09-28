@@ -2445,6 +2445,31 @@ body {
 .mqtt-picker-item:hover {
   background: #eef4fa;
 }
+.mqtt-device-tree-root {
+  background: #fff;
+}
+.mqtt-device-tree-root-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 9px;
+  border-bottom: 1px solid #b8c9da;
+  color: var(--navy);
+  background: #dfeaf4;
+  font-size: 11px;
+}
+.mqtt-device-tree-root-row input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  accent-color: var(--brand);
+}
+.mqtt-device-tree-root-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .mqtt-device-group,
 .mqtt-device-node,
 .mqtt-measurement-group,

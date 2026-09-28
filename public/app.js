@@ -1058,7 +1058,7 @@ function renderMqttDialogDevices() {
       groups.get(groupName).push(node);
     }
     const groupEntries = [...groups.entries()].sort(([left], [right]) => left.localeCompare(right, 'de', { numeric: true, sensitivity: 'base' }));
-    list.replaceChildren(...groupEntries.map(([groupName, groupNodes]) => {
+    const groupElements = groupEntries.map(([groupName, groupNodes]) => {
       const groupDevices = mqttFlattenDeviceTree(groupNodes);
       const group = document.createElement('details');
       group.className = 'mqtt-device-group';
@@ -1090,7 +1090,27 @@ function renderMqttDialogDevices() {
       children.replaceChildren(...groupNodes.map((node) => renderMqttDialogDeviceNode(node, 1)));
       group.append(children);
       return group;
-    }));
+    });
+    const allDevices = mqttFlattenDeviceTree(roots);
+    const root = document.createElement('div');
+    root.className = 'mqtt-device-tree-root';
+    const rootRow = document.createElement('div');
+    rootRow.className = 'mqtt-device-tree-root-row';
+    const selectedCount = allDevices.filter((device) => mqttDialogState.selectedDeviceIds.has(deviceId(device))).length;
+    rootRow.innerHTML = `<input type="checkbox"${selectedCount === allDevices.length ? ' checked' : ''}${selectedCount > 0 && selectedCount < allDevices.length ? ' data-indeterminate="true"' : ''}><strong>Alle Elemente</strong>`;
+    const rootCheckbox = rootRow.querySelector('input');
+    rootCheckbox.indeterminate = selectedCount > 0 && selectedCount < allDevices.length;
+    rootCheckbox.addEventListener('change', (event) => {
+      for (const device of allDevices) {
+        const id = deviceId(device);
+        if (event.target.checked) mqttDialogState.selectedDeviceIds.add(id);
+        else mqttDialogState.selectedDeviceIds.delete(id);
+      }
+      renderMqttDialogDevices();
+      refreshMqttDialogData().catch(reportBackgroundError);
+    });
+    root.append(rootRow, ...groupElements);
+    list.replaceChildren(root);
   }
   setText('#mqtt-dialog-device-count', `${mqttDialogState.selectedDeviceIds.size} ausgewählt`);
 }
