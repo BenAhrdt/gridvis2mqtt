@@ -1085,7 +1085,9 @@ function renderMqttDialogDevices() {
       group.append(summary);
       const children = document.createElement('div');
       children.className = 'mqtt-device-group-items';
-      children.replaceChildren(...groupNodes.map((node) => renderMqttDialogDeviceNode(node, 0)));
+      // The type folder is level 0. Its first device starts at level 1 so
+      // the hierarchy is visible even when the row also contains a caret.
+      children.replaceChildren(...groupNodes.map((node) => renderMqttDialogDeviceNode(node, 1)));
       group.append(children);
       return group;
     }));
