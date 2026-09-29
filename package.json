@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "check": "node --check src/server.js && node --check src/state.js && node --check src/gridvis-client.js && node --check src/mqtt-publisher.js && node --check src/discovery/home-assistant.js && node --check public/measurement-display.js && node --check public/app.js",
+    "check": "node --check src/server.js && node --check src/state.js && node --check src/gridvis-client.js && node --check src/mqtt-publisher.js && node --check src/mqtt-overview.js && node --check src/discovery/home-assistant.js && node --check public/measurement-display.js && node --check public/app.js",
     "test": "node --test"
   },
   "dependencies": {

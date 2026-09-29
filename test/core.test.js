@@ -3,6 +3,40 @@ import assert from 'node:assert/strict';
 import { buildBridgeApplicationUrlDiscovery, buildBridgeDiscovery, buildDeviceInfoDiscoveries, buildHomeAssistantDiscovery } from '../src/discovery/home-assistant.js';
 import { GridVisClient, groupOnlineValueRequests, normalizeOnlineValues } from '../src/gridvis-client.js';
 import { MqttPublisher } from '../src/mqtt-publisher.js';
+import { applyMqttOverviewRows } from '../src/mqtt-overview.js';
+
+test('applies bulk MQTT overview actions while keeping disable and remove separate', () => {
+  const state = {
+    measurementCache: {
+      'Haus::1': {
+        onlineValues: [{ value: 'PowerActive', type: 'SUM3', name: 'Wirkleistung' }],
+        mqttAssignments: { 'PowerActive:SUM3': ['homeassistant'] },
+        mqttActiveAssignments: { 'PowerActive:SUM3': ['homeassistant'] },
+        selectedMeasurements: [{ value: 'PowerActive', type: 'SUM3' }],
+        displayedMeasurements: [{ value: 'PowerActive', type: 'SUM3' }],
+        mqttRetainAssignments: { 'PowerActive:SUM3': true }
+      }
+    }
+  };
+
+  const disabled = applyMqttOverviewRows(state, {
+    project: 'Haus',
+    action: 'disable',
+    rows: [{ deviceId: '1', measurementKey: 'PowerActive:SUM3', mode: 'live' }]
+  });
+  assert.equal(disabled.changed, 1);
+  assert.deepEqual(state.measurementCache['Haus::1'].mqttAssignments['PowerActive:SUM3'], ['homeassistant']);
+  assert.equal(state.measurementCache['Haus::1'].mqttActiveAssignments['PowerActive:SUM3'], undefined);
+
+  const removed = applyMqttOverviewRows(state, {
+    project: 'Haus',
+    action: 'remove',
+    rows: [{ deviceId: '1', measurementKey: 'PowerActive:SUM3', mode: 'live' }]
+  });
+  assert.equal(removed.changed, 1);
+  assert.equal(state.measurementCache['Haus::1'].mqttAssignments['PowerActive:SUM3'], undefined);
+  assert.equal(state.measurementCache['Haus::1'].selectedMeasurements.length, 0);
+});
 
 test('normalizes GridVis online value maps without relying on response order', () => {
   const values = normalizeOnlineValues({

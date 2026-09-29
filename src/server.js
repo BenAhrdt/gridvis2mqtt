@@ -24,6 +24,7 @@ import {
 import { GridVisClient, normalizeOnlineValues } from './gridvis-client.js';
 import { buildBridgeApplicationUrlDiscovery, buildBridgeDiscovery, buildDeviceInfoDiscoveries, buildDiscoveryMessages, normalizeDiscoveryPrefix } from './discovery/home-assistant.js';
 import { MqttPublisher } from './mqtt-publisher.js';
+import { applyMqttOverviewRows } from './mqtt-overview.js';
 import { getState, hasStoredState, updateState } from './state.js';
 import { LOGBOOK_MAX_ENTRIES, logbook } from './logbook.js';
 
@@ -2820,6 +2821,53 @@ async function handleApi(request, response, url) {
     const project = String(url.searchParams.get('project') || '');
     const overview = mqttOverviewSnapshot(getState(), project);
     return sendJson(response, 200, { ok: true, project, ...overview });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/mqtt/overview/actions') {
+    const input = await readBody(request);
+    const project = String(input.project || '').trim();
+    const action = ['remove', 'disable', 'toggle', 'enable'].includes(input.action) ? input.action : '';
+    if (!project || !action || !Array.isArray(input.rows)) {
+      return sendJson(response, 400, { ok: false, error: 'Projekt, Aktion und Auswahl werden benötigt.' });
+    }
+    const result = await enqueueStateMutation(async () => {
+      const previousState = getState();
+      const nextState = structuredClone(previousState);
+      const summary = applyMqttOverviewRows(nextState, { project, action, rows: input.rows });
+      if (!summary.changed) return { ...summary, state: previousState };
+
+      const previousMessages = activeDiscoveryMessagesFromState(previousState);
+      const committedState = updateState(nextState);
+      const nextMessages = activeDiscoveryMessagesFromState(committedState);
+      logDiscoveryStateCommit(previousState, committedState, {
+        source: `mqtt-overview-${action}`,
+        deviceKey: project
+      });
+      const newlyActiveHistoryKeys = newlyActiveHistoricalDiscoveryKeys(previousState, committedState);
+      await mqtt.reconcileRetainedDiscovery(activeDiscoveryKeysFromState(committedState));
+      await syncNewStateToConnectedBrokers(previousState, committedState, { previousMessages, nextMessages });
+      if (newlyActiveHistoryKeys.size) {
+        await refreshHistoricalValuesForConnectedBrokers({
+          force: true,
+          messageKeys: newlyActiveHistoryKeys,
+          snapshot: committedState,
+          retryInFlight: true
+        });
+      }
+      scheduleHistoricalRefresh();
+      scheduleLiveRefresh();
+      return { ...summary, state: committedState };
+    });
+    return sendJson(response, 200, {
+      ok: true,
+      action,
+      requested: result.requested,
+      changed: result.changed,
+      ignored: result.ignored,
+      pending: result.changed > 0,
+      touchedDevices: result.touchedDevices,
+      state: stateForBrowser(result.state)
+    });
   }
 
   if (request.method === 'PUT' && url.pathname === '/api/state/device') {

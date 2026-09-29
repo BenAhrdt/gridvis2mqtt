@@ -2181,6 +2181,42 @@ body {
 .mqtt-overview-toolbar .compact-field {
   min-width: 190px;
 }
+.mqtt-overview-bulk-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(230px, 1fr) minmax(420px, .95fr);
+  min-height: 58px;
+  align-items: center;
+  gap: 16px;
+}
+.mqtt-overview-bulk-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.mqtt-overview-bulk-actions > span {
+  flex: 0 0 145px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mqtt-overview-bulk-actions #mqtt-overview-bulk-toggle {
+  flex: 0 0 150px;
+}
+.mqtt-overview-bulk-actions #mqtt-overview-bulk-remove {
+  flex: 0 0 145px;
+}
+.mqtt-overview-bulk-toolbar > .toolbar-status {
+  min-width: 0;
+  padding-bottom: 0;
+  text-align: left;
+  white-space: normal;
+}
+.mqtt-overview-bulk-toolbar > .search-field {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
 .mqtt-overview-panel {
   padding: 0;
   overflow: hidden;
@@ -2194,7 +2230,20 @@ body {
   overflow-y: auto;
 }
 .mqtt-overview-table {
-  min-width: 940px;
+  min-width: 1020px;
+}
+.mqtt-select-cell {
+  width: 42px;
+  min-width: 42px;
+  text-align: center;
+}
+.mqtt-select-cell input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.mqtt-overview-table tbody tr.selected {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 .mqtt-overview-table thead {
   position: sticky;
@@ -2204,7 +2253,6 @@ body {
 .mqtt-overview-table td {
   vertical-align: middle;
 }
-.mqtt-overview-table td:first-child,
 .mqtt-overview-table td:nth-child(2) {
   min-width: 175px;
 }
@@ -2970,6 +3018,14 @@ body {
     max-height: none;
   }
 }
+@media (max-width: 1000px) {
+  .mqtt-overview-bulk-toolbar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .mqtt-overview-bulk-toolbar > .search-field {
+    grid-column: 1 / -1;
+  }
+}
 @media (max-width: 620px) {
   .mqtt-overview-stats {
     grid-template-columns: 1fr;
@@ -2982,6 +3038,29 @@ body {
   }
   .mqtt-overview-toolbar .compact-field,
   .mqtt-dialog-mode-field {
+    width: 100%;
+  }
+  .mqtt-overview-bulk-toolbar,
+  .mqtt-overview-bulk-actions {
+    align-items: stretch;
+  }
+  .mqtt-overview-bulk-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .mqtt-overview-bulk-actions {
+    min-width: 0;
+    flex-direction: column;
+  }
+  .mqtt-overview-bulk-actions > span,
+  .mqtt-overview-bulk-actions #mqtt-overview-bulk-toggle,
+  .mqtt-overview-bulk-actions #mqtt-overview-bulk-remove,
+  .mqtt-overview-bulk-toolbar > .toolbar-status {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 100%;
+    text-align: left;
+  }
+  .mqtt-overview-bulk-toolbar > .search-field {
     width: 100%;
   }
   .mqtt-table-scroll {

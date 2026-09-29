@@ -33,6 +33,8 @@ const state = {
   mqttDeviceSummaries: {},
   discoveryPreparedCount: 0,
   mqttOverview: { project: '', rows: [], summary: {} },
+  mqttOverviewSelection: new Set(),
+  mqttOverviewActionInFlight: false,
   selectedDeviceIds: {},
   measurementCache: {},
   backendDeviceStateKey: '',
@@ -803,6 +805,46 @@ function mqttOverviewLatestHistoryValue(row) {
   return range ? mqttOverviewValue(values[range], row.unit) : '–';
 }
 
+function mqttOverviewRowKey(row) {
+  return `${row?.deviceId || ''}|${row?.measurementKey || ''}|${row?.mode || ''}`;
+}
+
+function mqttOverviewSelectedRows() {
+  return (state.mqttOverview.rows || []).filter((row) => state.mqttOverviewSelection.has(mqttOverviewRowKey(row)));
+}
+
+function updateMqttOverviewSelectionControls() {
+  const rows = mqttOverviewRowsForDisplay();
+  const selectedRows = mqttOverviewSelectedRows();
+  const selectedCount = selectedRows.length;
+  const activeCount = selectedRows.filter((row) => row.active).length;
+  const status = $('#mqtt-overview-selection-status');
+  if (status) status.textContent = selectedCount ? `${selectedCount} ausgewählt` : 'Keine Werte ausgewählt';
+  const toggle = $('#mqtt-overview-bulk-toggle');
+  const remove = $('#mqtt-overview-bulk-remove');
+  if (toggle) {
+    toggle.disabled = selectedCount === 0 || state.mqttOverviewActionInFlight;
+    toggle.textContent = selectedCount > 0 && activeCount === 0
+      ? 'Auswahl aktivieren'
+      : selectedCount > 0 && activeCount === selectedCount
+        ? 'Auswahl deaktivieren'
+        : 'Auswahl umschalten';
+    toggle.title = selectedCount > 0 && activeCount === 0
+      ? 'Ausgewählte MQTT-Werte aktivieren'
+      : selectedCount > 0 && activeCount === selectedCount
+        ? 'Ausgewählte MQTT-Werte deaktivieren'
+        : 'Den MQTT-Status der ausgewählten Werte umschalten';
+  }
+  if (remove) remove.disabled = selectedCount === 0 || state.mqttOverviewActionInFlight;
+  const header = $('#mqtt-overview-select-all');
+  if (header) {
+    const selectedVisible = rows.filter((row) => state.mqttOverviewSelection.has(mqttOverviewRowKey(row))).length;
+    header.checked = rows.length > 0 && selectedVisible === rows.length;
+    header.indeterminate = selectedVisible > 0 && selectedVisible < rows.length;
+    header.disabled = rows.length === 0 || state.mqttOverviewActionInFlight;
+  }
+}
+
 function mqttOverviewRowsForDisplay() {
   const query = ($('#mqtt-overview-search')?.value || '').trim().toLocaleLowerCase('de');
   const mode = $('#mqtt-overview-mode')?.value || 'all';
@@ -824,27 +866,34 @@ function renderMqttOverview() {
   setText('#mqtt-overview-active-count', summary.active || 0);
   setText('#mqtt-nav-count', summary.topics || 0);
   const rows = mqttOverviewRowsForDisplay();
+  const availableKeys = new Set((state.mqttOverview.rows || []).map(mqttOverviewRowKey));
+  for (const key of state.mqttOverviewSelection) {
+    if (!availableKeys.has(key)) state.mqttOverviewSelection.delete(key);
+  }
   const body = $('#mqtt-overview-table-body');
   if (!body) return;
   if (!rows.length) {
     const message = state.mqttOverview.project
       ? 'Keine passenden MQTT-Discovery-Werte gefunden.'
       : 'Wähle zuerst ein GridVis-Projekt aus.';
-    body.innerHTML = `<tr><td colspan="7"><div class="empty-state compact"><span class="empty-icon">⌁</span><strong>${escapeHtml(message)}</strong><p>Nur Messwerte mit vorbereiteter Discovery werden hier angezeigt.</p></div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="8"><div class="empty-state compact"><span class="empty-icon">⌁</span><strong>${escapeHtml(message)}</strong><p>Hier werden Messwerte mit gespeicherter MQTT-Discovery angezeigt.</p></div></td></tr>`;
   } else {
     body.replaceChildren(...rows.map((row) => {
       const tr = document.createElement('tr');
+      const selected = state.mqttOverviewSelection.has(mqttOverviewRowKey(row));
+      tr.classList.toggle('selected', selected);
       const profileText = row.profiles?.length ? row.profiles.join(', ') : 'MQTT-Profil';
       const status = row.active
         ? '<span class="value-status mqtt">MQTT aktiv</span>'
-        : '<span class="value-status discovery">Discovery vorbereitet</span>';
+        : '<span class="value-status discovery" title="Die Discovery bleibt gespeichert, MQTT-Veröffentlichungen sind deaktiviert.">MQTT deaktiviert</span>';
       const liveValue = row.mode === 'live' ? mqttOverviewValue(row.values?.live, row.unit) : '';
       const rowData = `data-device-id="${escapeHtml(row.deviceId)}" data-measurement-key="${escapeHtml(row.measurementKey)}" data-mode="${escapeHtml(row.mode)}"`;
-      tr.innerHTML = `<td><strong>${escapeHtml(row.deviceName)}</strong><small class="mqtt-table-meta">ID ${escapeHtml(row.deviceId)}</small></td><td><strong>${escapeHtml(row.name)}</strong><small class="mqtt-table-meta">${escapeHtml(row.value)} · ${escapeHtml(row.typeLabel)}${row.unit ? ` · ${escapeHtml(row.unit)}` : ''}</small></td><td><span class="mqtt-mode-badge ${row.mode}">${row.mode === 'historical' ? 'Historie' : 'Live'}</span></td><td><span class="mqtt-live-value">${escapeHtml(row.mode === 'live' ? liveValue : mqttOverviewLatestHistoryValue(row))}</span></td><td>${mqttOverviewRangeMarkup(row)}</td><td><div class="mqtt-status-cell"><button class="mqtt-status-toggle ${row.active ? 'active' : 'inactive'}" type="button" data-mqtt-row-toggle aria-label="${row.active ? 'MQTT-Veröffentlichung deaktivieren' : 'MQTT-Veröffentlichung aktivieren'}" aria-pressed="${row.active ? 'true' : 'false'}" ${rowData}>${status}</button><small>${escapeHtml(profileText)}</small></div></td><td><div class="mqtt-row-actions"><button class="button button-quiet mqtt-row-action" type="button" data-mqtt-row-edit ${rowData}>Öffnen</button><button class="button button-quiet mqtt-row-remove" type="button" data-mqtt-row-remove aria-label="Messwert ${escapeHtml(row.name)} vollständig entfernen" ${rowData}>Entfernen</button></div></td>`;
+      tr.innerHTML = `<td class="mqtt-select-cell"><input type="checkbox" data-mqtt-row-select aria-label="${selected ? 'Auswahl aufheben' : 'Messwert auswählen'}" ${selected ? 'checked' : ''} ${rowData}></td><td><strong>${escapeHtml(row.deviceName)}</strong><small class="mqtt-table-meta">ID ${escapeHtml(row.deviceId)}</small></td><td><strong>${escapeHtml(row.name)}</strong><small class="mqtt-table-meta">${escapeHtml(row.value)} · ${escapeHtml(row.typeLabel)}${row.unit ? ` · ${escapeHtml(row.unit)}` : ''}</small></td><td><span class="mqtt-mode-badge ${row.mode}">${row.mode === 'historical' ? 'Historie' : 'Live'}</span></td><td><span class="mqtt-live-value">${escapeHtml(row.mode === 'live' ? liveValue : mqttOverviewLatestHistoryValue(row))}</span></td><td>${mqttOverviewRangeMarkup(row)}</td><td><div class="mqtt-status-cell"><button class="mqtt-status-toggle ${row.active ? 'active' : 'inactive'}" type="button" data-mqtt-row-toggle aria-label="${row.active ? 'MQTT-Veröffentlichung deaktivieren' : 'MQTT-Veröffentlichung aktivieren'}" aria-pressed="${row.active ? 'true' : 'false'}" ${rowData}>${status}</button><small>${escapeHtml(profileText)}</small></div></td><td><div class="mqtt-row-actions"><button class="button button-quiet mqtt-row-action" type="button" data-mqtt-row-edit ${rowData}>Öffnen</button><button class="button button-quiet mqtt-row-remove" type="button" data-mqtt-row-remove aria-label="Messwert ${escapeHtml(row.name)} vollständig entfernen" ${rowData}>Entfernen</button></div></td>`;
       return tr;
     }));
   }
   setText('#mqtt-overview-status-text', `${rows.length} ${rows.length === 1 ? 'Eintrag' : 'Einträge'} angezeigt`);
+  updateMqttOverviewSelectionControls();
 }
 
 async function loadMqttOverview({ silent = false } = {}) {
@@ -961,6 +1010,62 @@ async function updateMqttOverviewRow(row, { enabled = null, remove = false } = {
   showToast(remove
     ? 'Messwert wurde vollständig entfernt.'
     : enabled ? 'MQTT-Veröffentlichung aktiviert.' : 'MQTT-Veröffentlichung deaktiviert.', 'success');
+}
+
+async function applyMqttOverviewBulkAction(requestedAction) {
+  const selectedRows = mqttOverviewSelectedRows();
+  if (!selectedRows.length) return;
+  const activeCount = selectedRows.filter((row) => row.active).length;
+  const action = requestedAction === 'remove'
+    ? 'remove'
+    : requestedAction === 'enable'
+      ? 'enable'
+      : requestedAction === 'disable'
+        ? 'disable'
+        : 'toggle';
+  const actionLabel = action === 'remove'
+    ? 'vollständig entfernen'
+    : action === 'enable'
+      ? 'aktivieren'
+      : action === 'disable'
+        ? 'deaktivieren'
+        : 'den MQTT-Zustand umschalten';
+  const confirmed = await requestConfirmation({
+    title: `Auswahl ${actionLabel}?`,
+    message: `${selectedRows.length} ausgewählte ${selectedRows.length === 1 ? 'Messwert' : 'Messwerte'} werden ${actionLabel}.`,
+    confirmLabel: action === 'remove' ? 'Entfernen' : 'Ausführen',
+    danger: action === 'remove'
+  });
+  if (!confirmed) return;
+
+  const project = selectedRows[0].project || $('#project-select')?.value || '';
+  state.mqttOverviewActionInFlight = true;
+  updateMqttOverviewSelectionControls();
+  try {
+    const result = await api('/api/mqtt/overview/actions', {
+      method: 'POST',
+      body: JSON.stringify({
+        project,
+        action: action === 'toggle' && activeCount === 0
+          ? 'enable'
+          : action === 'toggle' && activeCount === selectedRows.length
+            ? 'disable'
+            : action,
+        rows: selectedRows.map((row) => ({
+          deviceId: row.deviceId,
+          measurementKey: row.measurementKey,
+          mode: row.mode
+        }))
+      })
+    });
+    await loadMqttOverview({ silent: true });
+    showToast(`${Number(result.changed || 0)} ${result.changed === 1 ? 'Messwert wurde' : 'Messwerte wurden'} ${actionLabel}. Die Auswahl bleibt markiert.`, 'success');
+  } catch (error) {
+    showError(error);
+  } finally {
+    state.mqttOverviewActionInFlight = false;
+    updateMqttOverviewSelectionControls();
+  }
 }
 
 function mqttDialogSelectedMeasurementKeys() {
@@ -6744,7 +6849,20 @@ function attachEvents() {
   $('#mqtt-overview-mode')?.addEventListener('change', renderMqttOverview);
   $('#mqtt-overview-status')?.addEventListener('change', renderMqttOverview);
   $('#mqtt-overview-search')?.addEventListener('input', renderMqttOverview);
+  $('#mqtt-overview-bulk-toggle')?.addEventListener('click', () => applyMqttOverviewBulkAction('toggle'));
+  $('#mqtt-overview-bulk-remove')?.addEventListener('click', () => applyMqttOverviewBulkAction('remove'));
   $('#mqtt-overview-table-body')?.addEventListener('click', async (event) => {
+    const selection = event.target.closest('[data-mqtt-row-select]');
+    if (selection) {
+      const row = mqttOverviewRowFromButton(selection);
+      if (row) {
+        const key = mqttOverviewRowKey(row);
+        if (selection.checked) state.mqttOverviewSelection.add(key);
+        else state.mqttOverviewSelection.delete(key);
+        renderMqttOverview();
+      }
+      return;
+    }
     const toggle = event.target.closest('[data-mqtt-row-toggle]');
     if (toggle) {
       const row = mqttOverviewRowFromButton(toggle);
@@ -6778,6 +6896,15 @@ function attachEvents() {
     const button = event.target.closest('[data-mqtt-row-edit]');
     if (!button) return;
     openMqttSelectionDialog({ deviceIdValue: button.dataset.deviceId, measurementKeyValue: button.dataset.measurementKey, mode: button.dataset.mode });
+  });
+  $('#mqtt-overview-select-all')?.addEventListener('click', (event) => {
+    const visibleRows = mqttOverviewRowsForDisplay();
+    for (const row of visibleRows) {
+      const key = mqttOverviewRowKey(row);
+      if (event.target.checked) state.mqttOverviewSelection.add(key);
+      else state.mqttOverviewSelection.delete(key);
+    }
+    renderMqttOverview();
   });
   $('#mqtt-selection-close')?.addEventListener('click', closeMqttSelectionDialog);
   $('#mqtt-selection-cancel')?.addEventListener('click', closeMqttSelectionDialog);
