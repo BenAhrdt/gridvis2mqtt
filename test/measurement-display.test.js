@@ -159,6 +159,30 @@ test('does not classify an online measurement as historical when the key also ex
   assert.equal(runInContext("isHistoricalMeasurement({ value: 'ActiveEnergyConsumed', type: 'SUM13', online: false, historical: true, timebases: [900] })", context), true);
 });
 
+test('restores device defaults for legacy untouched MQTT history settings', async () => {
+  const context = createContext({
+    ...display, Intl, console,
+    setTimeout, clearTimeout,
+    window: { localStorage: { getItem: () => null, removeItem: () => {} } },
+    document: { querySelector: () => null }
+  });
+  const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  runInContext(app.replace(/^import .*;\n/, '').replace(/attachEvents\(\);\s*loadInitial\(\)\.catch\(showError\);\s*$/, ''), context);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(runInContext(`historicalSettingsOverride(
+    { interval: 900, ranges: ['today'], comparisons: [] },
+    { refreshInterval: 900, ranges: ['today'], comparisons: [] }
+  )`, context))), { interval: 900, ranges: ['today'], comparisons: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(runInContext(`historicalSettingsOverride(
+    { interval: 900, ranges: ['today'], comparisons: [] },
+    { refreshInterval: 900, ranges: ['today', 'yesterday'], comparisons: [] }
+  )`, context))), {});
+  assert.deepEqual(JSON.parse(JSON.stringify(runInContext(`historicalSettingsOverride(
+    { mode: 'custom', interval: 900, ranges: ['today'], comparisons: [] },
+    { refreshInterval: 900, ranges: ['today', 'yesterday'], comparisons: [] }
+  )`, context))), { mode: 'custom', interval: 900, ranges: ['today'], comparisons: [] });
+});
+
 test('keeps the energy value when GridVis wraps it with valueType metadata', async () => {
   const context = createContext({
     ...display, Intl, console,

@@ -6,7 +6,14 @@ import { fileURLToPath } from 'node:url';
 const DEFAULT_USERNAME = 'admin';
 const DEFAULT_PASSWORD = 'gridvis2mqtt';
 const SESSION_COOKIE = 'gridvis2mqtt_session';
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+// Keep the browser session convenient for an occasionally used local
+// dashboard, while retaining an upper bound for accidental misconfiguration.
+// The value is sliding: every authenticated request renews the session.
+const SESSION_TTL_HOURS = Math.min(
+  365 * 24,
+  Math.max(1, Number(process.env.GRIDVIS2MQTT_SESSION_TTL_HOURS) || 30 * 24)
+);
+const SESSION_TTL_MS = SESSION_TTL_HOURS * 60 * 60 * 1000;
 const authPath = process.env.GRIDVIS2MQTT_AUTH_FILE
   || fileURLToPath(new URL('../data/auth.local.json', import.meta.url));
 

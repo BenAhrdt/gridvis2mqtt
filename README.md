@@ -106,6 +106,8 @@ Das Startpasswort muss nach der ersten Anmeldung geändert werden. Die Authentif
 
 Unter „Verwaltung → Einstellungen“ kann das eigene Profil mit neuem Benutzernamen und Passwort gespeichert werden. Administratoren können dort weitere Benutzer anlegen, Passwörter zurücksetzen und Benutzer löschen. Die Authentifizierungsdatei verwendet gehashte Passwörter; sie wird nicht in Backups aufgenommen.
 
+Eine Sitzung bleibt standardmäßig 30 Tage gültig und wird bei Aktivität verlängert. Die Dauer kann über `GRIDVIS2MQTT_SESSION_TTL_HOURS` gesetzt werden; maximal sind 365 Tage möglich, zum Beispiel `GRIDVIS2MQTT_SESSION_TTL_HOURS=720` für 30 Tage.
+
 ## Backup und Restore
 
 In den Einstellungen gibt es unter „Backup und Restore“ einen JSON-Download und einen Restore-Upload. Standardmäßig werden Messwertauswahl, Geräte-/Messwertzuordnungen, MQTT-Profile, Zeitbereiche und Anzeigeeinstellungen gesichert, aber keine Verbindungsdaten.

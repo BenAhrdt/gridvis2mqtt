@@ -2203,6 +2203,9 @@ body {
 .mqtt-overview-bulk-actions #mqtt-overview-bulk-toggle {
   flex: 0 0 150px;
 }
+.mqtt-overview-bulk-actions #mqtt-overview-bulk-edit {
+  flex: 0 0 150px;
+}
 .mqtt-overview-bulk-actions #mqtt-overview-bulk-remove {
   flex: 0 0 145px;
 }
@@ -2345,7 +2348,11 @@ body {
 .mqtt-row-action {
   min-height: 29px;
   padding: 0 9px;
+  color: var(--brand-dark);
+  background: #e7eef6;
+  border-color: #b7c9dc;
   font-size: 10px;
+  font-weight: 750;
   white-space: nowrap;
 }
 .mqtt-row-remove {
@@ -2851,6 +2858,39 @@ body {
   color: #80652e;
   background: #fff8e7;
 }
+.mqtt-selected-mode-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+.mqtt-selected-edit,
+.mqtt-selected-edit-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  padding: 1px 5px;
+  border: 1px solid #b7c9dc;
+  border-radius: 3px;
+  color: var(--brand-dark);
+  background: #f4f8fc;
+  font-family: inherit;
+  font-size: 8px;
+  font-weight: 700;
+}
+.mqtt-selected-edit {
+  cursor: pointer;
+}
+.mqtt-selected-edit:hover {
+  border-color: var(--brand);
+  color: #fff;
+  background: var(--brand);
+}
+.mqtt-selected-edit-state {
+  border-color: #b7dcd9;
+  color: #376b78;
+  background: #edf8f6;
+}
 .mqtt-value-status {
   display: flex;
   flex-wrap: wrap;
@@ -2865,6 +2905,7 @@ body {
 .mqtt-existing-badge {
   display: inline-flex;
   align-items: center;
+  font-family: inherit;
   min-height: 16px;
   padding: 1px 5px;
   border: 1px solid #d3dce5;
@@ -2874,10 +2915,28 @@ body {
   font-size: 8px;
   font-weight: 700;
 }
+.mqtt-availability-badge {
+  cursor: pointer;
+}
+.mqtt-availability-badge:disabled {
+  cursor: default;
+  opacity: .78;
+}
 .mqtt-availability-badge.available {
   color: #376b78;
   border-color: #b7dcd9;
   background: #edf8f6;
+}
+.mqtt-availability-badge.available:hover:not(:disabled),
+.mqtt-availability-badge.available.selected {
+  color: #fff;
+  border-color: var(--brand);
+  background: var(--brand);
+}
+.mqtt-availability-badge.configured {
+  color: #80652e;
+  border-color: #ead8ad;
+  background: #fff8e7;
 }
 .mqtt-existing-badge {
   color: #80652e;
@@ -2923,6 +2982,21 @@ body {
   background: transparent;
   font-size: 17px;
 }
+.mqtt-picker-selected-item .mqtt-selected-mode-toggle {
+  width: auto;
+  height: auto;
+  padding: 1px 5px;
+  border: 1px solid var(--brand);
+  border-radius: 3px;
+  color: #fff;
+  background: var(--brand);
+  font-size: 8px;
+  font-weight: 700;
+}
+.mqtt-picker-selected-item .mqtt-selected-mode-toggle:hover {
+  border-color: var(--brand-dark);
+  background: var(--brand-dark);
+}
 .mqtt-dialog-settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2941,6 +3015,11 @@ body {
   margin: 0 0 16px;
   color: var(--navy);
   font-size: 15px;
+}
+.mqtt-dialog-history-cycle-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 10px;
 }
 .mqtt-dialog-settings-card .profile-default-field {
   margin-top: 16px;
@@ -3053,6 +3132,7 @@ body {
   }
   .mqtt-overview-bulk-actions > span,
   .mqtt-overview-bulk-actions #mqtt-overview-bulk-toggle,
+  .mqtt-overview-bulk-actions #mqtt-overview-bulk-edit,
   .mqtt-overview-bulk-actions #mqtt-overview-bulk-remove,
   .mqtt-overview-bulk-toolbar > .toolbar-status {
     flex: 0 0 auto;

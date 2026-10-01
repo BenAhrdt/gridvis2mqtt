@@ -39,7 +39,9 @@ const mqtt = new MqttPublisher({
   onBrokerConnected: (brokerId) => handleBrokerConnected(brokerId)
 });
 
-const MQTT_STATE_DELAY_MS = 2000;
+// Give Home Assistant and other discovery consumers time to process the
+// retained config before the first state value reaches the state topic.
+const MQTT_STATE_DELAY_MS = 5000;
 const INFORMATION_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const INFORMATION_REFRESH_CONCURRENCY = 1;
 const HISTORICAL_REFRESH_CONCURRENCY = 1;
@@ -752,7 +754,7 @@ function activeDiscoveryMessagesFromState(snapshot = {}) {
   const globalHistoryRanges = Array.isArray(snapshot.historicalGlobalSettings?.ranges)
     && snapshot.historicalGlobalSettings.ranges.length
     ? snapshot.historicalGlobalSettings.ranges
-    : ['today'];
+    : DEFAULT_HISTORY_RANGES;
 
   const bridgeProfiles = new Map();
   for (const [cacheKey, cache] of Object.entries(measurementCaches)) {
@@ -819,8 +821,15 @@ function activeDiscoveryMessagesFromState(snapshot = {}) {
         const activeProfileIds = new Set(
           (historical ? historicalActiveAssignments : liveActiveAssignments)?.[measurementKey] || []
         );
-        const configuredRanges = cache.historicalSettings?.[measurementKey]?.ranges;
-        const configuredComparisons = cache.historicalSettings?.[measurementKey]?.comparisons;
+        const configuredSettings = historical
+          ? historicalSettingsOverride(cache.historicalSettings?.[measurementKey], {
+            refreshInterval: deviceDefaults.refreshInterval,
+            ranges: deviceHistoryRanges,
+            comparisons: deviceHistoryComparisons
+          })
+          : {};
+        const configuredRanges = configuredSettings.ranges;
+        const configuredComparisons = configuredSettings.comparisons;
         const comparisons = historical && Array.isArray(configuredComparisons)
           ? configuredComparisons
           : deviceHistoryComparisons;
@@ -949,7 +958,7 @@ function mqttOverviewRows(snapshot = {}, project = '') {
   const rows = [];
   const globalHistoryRanges = normalizedHistoryRanges(
     snapshot.historicalGlobalSettings?.ranges,
-    ['today']
+    DEFAULT_HISTORY_RANGES
   );
   const globalHistoryComparisons = snapshot.historicalGlobalSettings?.comparisons;
 
@@ -983,7 +992,13 @@ function mqttOverviewRows(snapshot = {}, project = '') {
         const activeProfileIds = Array.isArray(activeAssignments?.[measurementKey])
           ? activeAssignments[measurementKey].filter((id) => profileNames.has(id) && profiles.find((profile) => profile.id === id)?.enabled !== false)
           : [];
-        const configuredSettings = cache.historicalSettings?.[measurementKey] || {};
+        const configuredSettings = historical
+          ? historicalSettingsOverride(cache.historicalSettings?.[measurementKey], {
+            refreshInterval: deviceHistoryDefaults.refreshInterval,
+            ranges: deviceHistoryRanges,
+            comparisons: deviceHistoryComparisons
+          })
+          : {};
         const ranges = historical
           ? historicalRangesWithComparison(
             Array.isArray(configuredSettings.ranges) && configuredSettings.ranges.length
@@ -1348,6 +1363,10 @@ async function refreshLiveValuesForBroker(brokerId, { force = false, onlyMissing
 }
 
 async function refreshLiveValuesForConnectedBrokers({ force = false, snapshot = getState() } = {}) {
+  // Do not let a scheduler run against the just-committed state while its
+  // Discovery messages are still being published. The state mutation path
+  // publishes Discovery first and deliberately waits before the first value.
+  await stateMutationQueue.catch(() => {});
   const brokers = mqtt.getSnapshot().brokers.filter((broker) => broker.connected);
   await Promise.all(brokers.map((broker) => refreshLiveValuesForBroker(broker.id, { force, snapshot })));
 }
@@ -1369,6 +1388,7 @@ function scheduleLiveRefresh() {
   const delay = Math.max(250, Math.min(...delays));
   liveRefreshTimer = setTimeout(async () => {
     try {
+      await stateMutationQueue.catch(() => {});
       await refreshLiveValuesForConnectedBrokers();
     } catch (error) {
       logbook.error('gridvis.live-refresh', { error: error.message });
@@ -1442,6 +1462,9 @@ async function publishCachedHistoricalValuesForBroker(snapshot, brokerId, messag
 }
 
 const HISTORY_REFRESH_INTERVALS = new Set([300, 600, 900, 1800, 2700, 3600, 7200, 21600, 43200, 86400]);
+const DEFAULT_HISTORY_REFRESH_INTERVAL = 300;
+const DEFAULT_HISTORY_MINUTE_OFFSET = 2;
+const DEFAULT_HISTORY_RANGES = ['today', 'yesterday', 'lastmonth', 'thismonth', 'lastyear', 'thisyear'];
 const HISTORY_RANGE_EXPRESSIONS = {
   today: ['NAMED_Today', 'NAMED_Today'],
   yesterday: ['NAMED_Yesterday', 'NAMED_Yesterday'],
@@ -1546,12 +1569,12 @@ let historicalRefreshTimer = null;
 const historicalLastFetchedAt = new Map();
 const historicalRefreshInFlight = new Map();
 
-function normalizedHistoryInterval(value, fallback = 900) {
+function normalizedHistoryInterval(value, fallback = DEFAULT_HISTORY_REFRESH_INTERVAL) {
   const interval = Number(value);
   return HISTORY_REFRESH_INTERVALS.has(interval) ? interval : fallback;
 }
 
-function normalizedHistoryMinuteOffset(value, fallback = 0) {
+function normalizedHistoryMinuteOffset(value, fallback = DEFAULT_HISTORY_MINUTE_OFFSET) {
   const offset = Number(value);
   return Number.isInteger(offset) && offset >= 0 && offset <= 59 ? offset : fallback;
 }
@@ -1568,9 +1591,33 @@ function nextHistoricalScheduleAt(job, timestamp = Date.now()) {
   return historicalScheduleSlotAtOrBefore(timestamp, job.interval, job.minuteOffset) + period;
 }
 
-function normalizedHistoryRanges(ranges, fallback = ['today']) {
+function normalizedHistoryRanges(ranges, fallback = DEFAULT_HISTORY_RANGES) {
   const valid = [...new Set((Array.isArray(ranges) ? ranges : []).filter((range) => HISTORY_RANGE_EXPRESSIONS[range]))];
   return valid.length ? valid : fallback;
+}
+
+function historicalSettingsOverride(settings, defaults = {}) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return {};
+
+  // Older MQTT-menu saves always wrote this object, even when the user left
+  // the standard settings untouched. Treat that exact legacy payload as
+  // "use the device defaults" once those defaults no longer are the old
+  // built-in values. Explicit settings written by the current UI carry the
+  // custom marker and are never treated as legacy data.
+  const legacyDefault = settings.mode !== 'custom'
+    && Number(settings.interval) === 900
+    && normalizedHistoryRanges(settings.ranges, []).length === 1
+    && normalizedHistoryRanges(settings.ranges, [])[0] === 'today'
+    && normalizeHistoryComparisons(settings.comparisons).length === 0;
+  if (!legacyDefault) return settings;
+
+  const defaultRanges = normalizedHistoryRanges(defaults.ranges);
+  const defaultComparisons = normalizeHistoryComparisons(defaults.comparisons);
+  const defaultsChanged = normalizedHistoryInterval(defaults.refreshInterval) !== 900
+    || defaultRanges.length !== 1
+    || defaultRanges[0] !== 'today'
+    || defaultComparisons.length > 0;
+  return defaultsChanged ? {} : settings;
 }
 
 function historicalRangeExpressions(range, comparisons = []) {
@@ -1652,8 +1699,14 @@ function historicalJobsFromState(snapshot = {}, brokerId = '') {
       });
       if (!profileIds.length) continue;
 
-      const settings = cache.historicalSettings?.[measurementKey] || {};
+      const settings = historicalSettingsOverride(cache.historicalSettings?.[measurementKey], {
+        refreshInterval: deviceInterval,
+        minuteOffset: deviceMinuteOffset,
+        ranges: deviceRanges,
+        comparisons: deviceComparisons
+      });
       const interval = normalizedHistoryInterval(settings.interval, deviceInterval);
+      const minuteOffset = normalizedHistoryMinuteOffset(settings.minuteOffset, deviceMinuteOffset);
       const energy = historicalUsesEnergyApi(measurement);
       const comparisons = Array.isArray(settings.comparisons)
         ? settings.comparisons
@@ -1674,7 +1727,7 @@ function historicalJobsFromState(snapshot = {}, brokerId = '') {
           energy,
           profileIds,
           comparisons,
-          minuteOffset: deviceMinuteOffset,
+          minuteOffset,
           retainState: cache.historicalRetainAssignments?.[measurementKey] === true
         });
       }
@@ -2052,6 +2105,7 @@ function scheduleHistoricalRefresh() {
   });
   historicalRefreshTimer = setTimeout(async () => {
     try {
+      await stateMutationQueue.catch(() => {});
       await refreshHistoricalValuesForConnectedBrokers({ scheduled: true });
     } catch (error) {
       logbook.error('mqtt.historical-cycle', { phase: 'error', error: error.message });
@@ -2218,6 +2272,7 @@ async function syncNewStateToConnectedBrokers(previousState, nextState, {
     if (!brokerMessages.length) return;
     const result = await mqtt.publishDiscovery(brokerMessages);
     if (!result.published) return;
+    await waitForMqttState();
     const messageKeys = new Set(brokerMessages.map(discoveryMessageKey));
     await publishBridgeValuesForBroker(nextState, broker.id, messageKeys);
     await publishDeviceInfoValuesForBroker(nextState, broker.id, messageKeys);
@@ -3232,10 +3287,10 @@ async function handleApi(request, response, url) {
       });
       const bridgeMessages = messages.filter(isBridgeDiscoveryMessage);
       const deviceInfoMessages = messages.filter(isDeviceInfoDiscoveryMessage);
-      if (bridgeMessages.length || deviceInfoMessages.length) {
-        const connectedBrokerIds = new Set(mqtt.getSnapshot().brokers.filter((broker) => broker.connected).map((broker) => broker.id));
-        if (connectedBrokerIds.size) {
-          await waitForMqttState();
+      const connectedBrokerIds = new Set(mqtt.getSnapshot().brokers.filter((broker) => broker.connected).map((broker) => broker.id));
+      if (connectedBrokerIds.size && result.published) {
+        await waitForMqttState();
+        if (bridgeMessages.length || deviceInfoMessages.length) {
           await mqtt.publishValues(bridgeMessages.filter((message) => connectedBrokerIds.has(message.brokerId || 'default')));
           await mqtt.publishValues(deviceInfoMessages.filter((message) => connectedBrokerIds.has(message.brokerId || 'default')));
         }
