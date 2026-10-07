@@ -6,6 +6,7 @@
 - Administratoren können eine verfügbare Release direkt in den Einstellungen starten. Download, Installation, Abhängigkeiten, Neustart und Erreichbarkeit werden mit Fortschritt und aktuellem Status angezeigt.
 - Nach einem erfolgreichen Web-Update lädt die Oberfläche automatisch einmal neu. Laufzeitdaten werden vor dem Update gesichert.
 - Das Changelog und die Release-Empfehlung folgen jetzt einer nachvollziehbaren SemVer-/GitHub-Release-Struktur.
+- GitHub Actions prüft Pull Requests, `main`-Pushes und `v*`-Tags mit Node.js- und Bash-Tests; nach einem erfolgreichen Tag-Lauf wird die veröffentlichte GitHub-Release automatisch aus dem passenden Changelog-Abschnitt erzeugt.
 - Der Hinweis zur fehlenden Verbindung zu Janitza electronics GmbH wurde in der README ausdrücklich ergänzt.
 
 ## [0.3.11] - 2026-09-26

@@ -104,7 +104,15 @@ git tag -a v0.4.0 -m "Release v0.4.0"
 git push origin v0.4.0
 ```
 
-Anschließend wird auf GitHub aus dem Tag `v0.4.0` eine Release angelegt. Für jede weitere Veröffentlichung werden `package.json`, `package-lock.json` und der oberste Eintrag in `CHANGELOG.md` gemeinsam aktualisiert. Die Versionsnummern verwenden Semantic Versioning (`MAJOR.MINOR.PATCH`); die Updateprüfung berücksichtigt nur gültige Release-Tags wie `v0.4.1` oder `v1.0.0`.
+Anschließend wird auf GitHub aus dem Tag `v0.4.0` automatisch eine veröffentlichte Release angelegt. Vor jedem Tag laufen in GitHub Actions automatisch `npm ci`, die Syntaxprüfung, die Tests, die Bash-Syntaxprüfung und – bei einem `v*`-Tag – der Abgleich mit der Version aus `package.json`. Erst wenn alle Matrix-Tests erfolgreich sind, wird die Release erstellt und der passende Abschnitt aus `CHANGELOG.md` übernommen. Die Versionsnummern verwenden Semantic Versioning (`MAJOR.MINOR.PATCH`); die Updateprüfung berücksichtigt nur gültige veröffentlichte Release-Tags wie `v0.4.1` oder `v1.0.0`. Entwürfe und Pre-Releases werden für den produktiven Updatekanal nicht verwendet.
+
+Empfohlener Release-Ablauf:
+
+1. `package.json`, `package-lock.json` und `CHANGELOG.md` gemeinsam aktualisieren.
+2. Änderungen über einen Pull Request nach `main` bringen und den grünen CI-Lauf abwarten.
+3. Den Versions-Commit taggen und den Tag pushen, zum Beispiel `v0.4.1`.
+4. Den CI-Lauf abwarten. Bei Erfolg wird die GitHub-Release automatisch mit dem passenden Changelog-Abschnitt veröffentlicht.
+5. Danach kann die installierte Anwendung über „Nach Release suchen“ aktualisiert werden.
 
 Das Repository kann öffentlich angelegt werden. Als Beschreibung eignet sich zum Beispiel „Liest Janitza GridVis-Daten und veröffentlicht ausgewählte Werte über MQTT“; der Unabhängigkeits- und Haftungshinweis in dieser README sollte unverändert erhalten bleiben. Als Lizenz ist MIT vorbereitet.
 
