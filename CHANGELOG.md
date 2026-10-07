@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.2] - 2026-10-07
+
+- Die README dokumentiert jetzt eine vollständige Erstinstallation auf Debian 13 mit Systempaketen, Git-Clone, `install.sh`, systemd-Prüfung und dem anschließenden Webzugriff.
+
 ## [0.4.1] - 2026-10-07
 
 - GitHub Actions prüft Pull Requests, `main`-Pushes und `v*`-Tags mit Node.js- und Bash-Tests; nach einem erfolgreichen Tag-Lauf wird die veröffentlichte GitHub-Release automatisch aus dem passenden Changelog-Abschnitt erzeugt.

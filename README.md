@@ -45,6 +45,41 @@ Für den Produktivbetrieb `NODE_ENV=production` setzen und Zugangsdaten über Um
 
 Die Oberfläche ist anschließend unter [http://localhost:8080](http://localhost:8080) erreichbar.
 
+## Erstinstallation auf Debian 13
+
+Die folgende Erstinstallation ist für ein frisches Debian-13-System beziehungsweise einen Debian-13-LXC beschrieben. Sie wird als `root` ausgeführt; bei einer Anmeldung mit einem normalen Benutzer kann `sudo` vor die Systembefehle gesetzt werden.
+
+```bash
+# System aktualisieren und benötigte Werkzeuge installieren
+apt update
+apt upgrade -y
+apt install -y ca-certificates git nodejs npm
+
+# install.sh benötigt Node.js >= 20.19 und npm
+git --version
+node --version
+npm --version
+
+# Das öffentliche Repository zunächst in ein temporäres Arbeitsverzeichnis klonen.
+# Der Klon enthält .git, origin und den Upstream-Branch für spätere Updates.
+BOOTSTRAP_DIR="$(mktemp -d /tmp/gridvis2mqtt-bootstrap.XXXXXX)"
+git clone --branch main https://github.com/BenAhrdt/gridvis2mqtt.git "$BOOTSTRAP_DIR"
+cd "$BOOTSTRAP_DIR"
+
+# Anwendung installieren; die Standardwerte sind /opt, /var/lib und Port 8080.
+GRIDVIS2MQTT_INSTALL_DIR=/opt/gridvis2mqtt \
+GRIDVIS2MQTT_DATA_DIR=/var/lib/gridvis2mqtt \
+GRIDVIS2MQTT_PORT=8080 \
+./install.sh
+
+# Dienst und installierte Version kontrollieren
+systemctl status gridvis2mqtt --no-pager
+node -p "require('/opt/gridvis2mqtt/package.json').version"
+git -C /opt/gridvis2mqtt remote -v
+```
+
+Wenn `node --version` kleiner als `v20.19.0` ist, muss zuerst eine neuere Node.js-Version installiert werden. `install.sh` bricht bei einer zu alten Version absichtlich ab. Nach erfolgreicher Installation ist die Oberfläche unter `http://<LXC-IP>:8080` erreichbar. Die produktiven Einstellungen, Zustände und Zugangsdaten liegen getrennt unter `/var/lib/gridvis2mqtt`; der Anwendungscode und sein Git-Klon liegen unter `/opt/gridvis2mqtt`.
+
 ## Installation und Update
 
 Nach dem Klonen kann die Anwendung auf einem Linux-LXC als systemd-Dienst installiert werden. Das Skript muss als `root` ausgeführt werden; auf einem schlanken Debian-LXC ist `sudo` nicht erforderlich:
@@ -98,19 +133,19 @@ In den Einstellungen prüft „Nach Release suchen“ bei einem GitHub-Remote di
 Für dieses Repository ist folgende Einrichtung vorgesehen:
 
 ```bash
-git remote add origin git@github.com:BenAhrdt/gridvis2mqtt.git
+git remote add origin https://github.com/BenAhrdt/gridvis2mqtt.git
 git push -u origin main
-git tag -a v0.4.0 -m "Release v0.4.0"
-git push origin v0.4.0
+git tag -a v0.4.2 -m "Release v0.4.2"
+git push origin v0.4.2
 ```
 
-Anschließend wird auf GitHub aus dem Tag `v0.4.0` automatisch eine veröffentlichte Release angelegt. Vor jedem Tag laufen in GitHub Actions automatisch `npm ci`, die Syntaxprüfung, die Tests, die Bash-Syntaxprüfung und – bei einem `v*`-Tag – der Abgleich mit der Version aus `package.json`. Erst wenn alle Matrix-Tests erfolgreich sind, wird die Release erstellt und der passende Abschnitt aus `CHANGELOG.md` übernommen. Die Versionsnummern verwenden Semantic Versioning (`MAJOR.MINOR.PATCH`); die Updateprüfung berücksichtigt nur gültige veröffentlichte Release-Tags wie `v0.4.1` oder `v1.0.0`. Entwürfe und Pre-Releases werden für den produktiven Updatekanal nicht verwendet.
+Anschließend wird auf GitHub aus dem Tag `v0.4.2` automatisch eine veröffentlichte Release angelegt. Vor jedem Tag laufen in GitHub Actions automatisch `npm ci`, die Syntaxprüfung, die Tests, die Bash-Syntaxprüfung und – bei einem `v*`-Tag – der Abgleich mit der Version aus `package.json`. Erst wenn alle Matrix-Tests erfolgreich sind, wird die Release erstellt und der passende Abschnitt aus `CHANGELOG.md` übernommen. Die Versionsnummern verwenden Semantic Versioning (`MAJOR.MINOR.PATCH`); die Updateprüfung berücksichtigt nur gültige veröffentlichte Release-Tags wie `v0.4.2` oder `v1.0.0`. Entwürfe und Pre-Releases werden für den produktiven Updatekanal nicht verwendet.
 
 Empfohlener Release-Ablauf:
 
 1. `package.json`, `package-lock.json` und `CHANGELOG.md` gemeinsam aktualisieren.
 2. Änderungen über einen Pull Request nach `main` bringen und den grünen CI-Lauf abwarten.
-3. Den Versions-Commit taggen und den Tag pushen, zum Beispiel `v0.4.1`.
+3. Den Versions-Commit taggen und den Tag pushen, zum Beispiel `v0.4.2`.
 4. Den CI-Lauf abwarten. Bei Erfolg wird die GitHub-Release automatisch mit dem passenden Changelog-Abschnitt veröffentlicht.
 5. Danach kann die installierte Anwendung über „Nach Release suchen“ aktualisiert werden.
 
