@@ -3,7 +3,8 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const APP_NAME = 'GridVis2MQTT';
-export const APP_VERSION = '0.3.11';
+const packageManifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+export const APP_VERSION = String(packageManifest.version || '0.0.0');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const localConfigPath = process.env.GRIDVIS2MQTT_CONFIG_FILE

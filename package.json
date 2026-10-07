@@ -1,6 +1,6 @@
 {
   "name": "gridvis2mqtt",
-  "version": "0.3.11",
+  "version": "0.4.0",
   "private": true,
   "description": "Read Janitza GridVis data and publish it through MQTT discovery profiles.",
   "type": "module",

@@ -5,7 +5,7 @@ GridVis2MQTT liest Projekte, Geräte, Live-Werte und historische Messwerte aus d
 > [!IMPORTANT]
 > **GridVis2MQTT ist ein privates und unabhängig entwickeltes Open-Source-Projekt und kein offizielles Produkt von Janitza electronics GmbH.**
 >
-> Das Projekt wird weder von Janitza entwickelt noch gewartet oder unterstützt. Die Verwendung erfolgt auf eigene Verantwortung.
+> Es besteht keine Verbindung, Kooperation, Beauftragung oder sonstige Zugehörigkeit zu Janitza electronics GmbH. Das Projekt wird weder von Janitza entwickelt noch gewartet oder unterstützt. Die Verwendung erfolgt auf eigene Verantwortung.
 
 ## Aktueller Stand
 
@@ -55,13 +55,13 @@ Nach dem Klonen kann die Anwendung auf einem Linux-LXC als systemd-Dienst instal
 
 Standardmäßig verwendet die Installation `/opt/gridvis2mqtt`, `/var/lib/gridvis2mqtt` und Port `8080`. Der Dienst läuft dabei als `root`, damit auf einem schlanken LXC kein zusätzlicher Dienstbenutzer eingerichtet werden muss. Diese Werte können über `GRIDVIS2MQTT_INSTALL_DIR`, `GRIDVIS2MQTT_DATA_DIR` und `GRIDVIS2MQTT_PORT` angepasst werden. Das Skript kopiert keine lokalen Konfigurations-, Zustands- oder Authentifizierungsdateien aus dem Klon. Die Verbindung wird anschließend in der Weboberfläche eingerichtet.
 
-Ein Update wird aus dem installierten Git-Klon gestartet:
+Ein Update kann aus dem installierten Git-Klon oder – sobald eine GitHub-Release veröffentlicht wurde – direkt in `Verwaltung → Einstellungen` gestartet werden:
 
 ```bash
 /opt/gridvis2mqtt/update.sh
 ```
 
-Dabei werden lokale Änderungen abgelehnt, Laufzeitdaten gesichert, der Fast-forward-Stand geladen, Abhängigkeiten aktualisiert, der Dienst neu gestartet und die Erreichbarkeit geprüft. Die Ausgabe enthält die einzelnen Schritte und die Gesamtlaufzeit. Voraussetzung ist, dass das Zielverzeichnis ein Git-Klon mit konfiguriertem Remote ist.
+Dabei werden lokale Änderungen abgelehnt, Laufzeitdaten gesichert, der Fast-forward-Stand geladen, Abhängigkeiten aktualisiert, der Dienst neu gestartet und die Erreichbarkeit geprüft. Die Ausgabe beziehungsweise die Oberfläche zeigt Download-Fortschritt, aktuellen Schritt und Gesamtlaufzeit. Voraussetzung ist, dass das Zielverzeichnis ein Git-Klon mit konfiguriertem `origin`-Remote und Upstream-Branch ist.
 
 Wenn das Repository noch nicht auf GitHub liegt, kann der aktuelle Stand zunächst per `rsync` vom Entwicklungs-LXC auf den Produktiv-LXC übertragen werden. Dabei wird nur der Anwendungscode kopiert; die Laufzeitdaten unter `/var/lib/gridvis2mqtt` bleiben erhalten:
 
@@ -91,7 +91,22 @@ GRIDVIS2MQTT_INSTALL_DIR=/opt/gridvis2mqtt ./install.sh
 
 `install.sh` installiert die neue Version, führt `npm ci` aus, schreibt die systemd-Konfiguration neu und startet den Dienst. Die produktiven Einstellungen, Zustände, Authentifizierung und Backups bleiben im separaten Datenverzeichnis erhalten. Sobald ein vertrauenswürdiges Git-Remote vorhanden ist, kann anschließend `update.sh` für die regulären Updates verwendet werden.
 
-In den Einstellungen kann der Git-Stand außerdem geprüft werden. Der automatische Start des Update-Skripts per Webbutton bleibt deaktiviert, solange kein freigegebenes Repository/Remote feststeht; dadurch wird kein unkontrollierter Code aus einer unbekannten Quelle ausgeführt.
+In den Einstellungen prüft „Nach Release suchen“ bei einem GitHub-Remote die aktuelle GitHub-Release über deren SemVer-Tag. Nur Administratoren können eine neue Release starten. Während des Updates werden Download, Installation, Abhängigkeiten, Neustart und Gesundheitsprüfung angezeigt; nach erfolgreichem Abschluss lädt die Webseite einmal automatisch neu. Ein unbekanntes oder nicht auf GitHub liegendes Remote wird nicht automatisch ausgeführt.
+
+### GitHub-Repository und Releases
+
+Für dieses Repository ist folgende Einrichtung vorgesehen:
+
+```bash
+git remote add origin git@github.com:BenAhrdt/gridvis2mqtt.git
+git push -u origin main
+git tag -a v0.4.0 -m "Release v0.4.0"
+git push origin v0.4.0
+```
+
+Anschließend wird auf GitHub aus dem Tag `v0.4.0` eine Release angelegt. Für jede weitere Veröffentlichung werden `package.json`, `package-lock.json` und der oberste Eintrag in `CHANGELOG.md` gemeinsam aktualisiert. Die Versionsnummern verwenden Semantic Versioning (`MAJOR.MINOR.PATCH`); die Updateprüfung berücksichtigt nur gültige Release-Tags wie `v0.4.1` oder `v1.0.0`.
+
+Das Repository kann öffentlich angelegt werden. Als Beschreibung eignet sich zum Beispiel „Liest Janitza GridVis-Daten und veröffentlicht ausgewählte Werte über MQTT“; der Unabhängigkeits- und Haftungshinweis in dieser README sollte unverändert erhalten bleiben. Als Lizenz ist MIT vorbereitet.
 
 Die Geräte-Icon-API kann in den Anwendungseinstellungen separat ohne Web-Login freigegeben werden. Sie ist standardmäßig aktiviert, damit Home Assistant die in der Discovery veröffentlichte `iconURL` laden kann. Öffentlich erreichbar sind dabei ausschließlich die beiden Bildrouten; alle Daten- und Konfigurationsrouten bleiben geschützt.
 

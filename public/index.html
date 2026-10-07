@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050708">
     <title>GridVis2MQTT</title>
     <link rel="icon" href="/branding/gridvis2mqtt.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=0.3.11-10">
+    <link rel="stylesheet" href="/styles.css?v=0.4.0-1">
   </head>
   <body>
     <section class="auth-screen" id="login-screen" hidden>
@@ -304,12 +304,12 @@
             </div>
             <div class="administration-sections">
               <article class="content-panel backup-settings-panel"><div class="panel-heading"><div><p class="overline">Sicherung</p><h2>Backup und Restore</h2><p class="panel-copy">Sichert Messwertauswahl, MQTT-Zuordnungen, Zeitbereiche und Anzeigeeinstellungen. Backups enthalten standardmäßig keine Zugangsdaten.</p></div></div><div class="settings-form"><label class="profile-default-field"><input id="backup-include-connections" type="checkbox"> GridVis- und MQTT-Verbindungsdaten einschließen</label><p class="form-hint">Nur aktivieren, wenn das Backup geschützt gespeichert oder übertragen wird. Enthaltene Passwörter werden unverschlüsselt in der JSON-Datei abgelegt.</p><div class="panel-actions"><button class="button button-secondary" id="backup-download" type="button">Backup herunterladen</button><label class="button button-secondary file-button" for="backup-file">Backup auswählen</label><input id="backup-file" type="file" accept="application/json,.json" hidden><button class="button button-primary" id="backup-restore" type="button" disabled>Backup wiederherstellen</button></div><p class="form-hint" id="backup-file-name">Keine Datei ausgewählt.</p></div></article>
-              <article class="content-panel update-settings-panel"><div class="panel-heading"><div><p class="overline">Version</p><h2>Update prüfen</h2><p class="panel-copy">Bei einer Installation aus einem Git-Klon kann hier geprüft werden, ob das konfigurierte Remote neue Commits enthält.</p></div></div><div class="settings-form"><div class="update-status-row"><span>Installierte Version</span><strong id="update-current-version">–</strong></div><p class="form-hint" id="update-status">Noch nicht geprüft.</p><div class="panel-actions"><button class="button button-secondary" id="update-check" type="button">Update prüfen</button></div><p class="form-hint">Das eigentliche Update wird aktuell kontrolliert über <code>update.sh</code> ausgeführt. Sobald ein Git-Remote feststeht, kann der Neustart per Oberfläche ergänzt werden.</p></div></article>
+              <article class="content-panel update-settings-panel"><div class="panel-heading"><div><p class="overline">Version</p><h2>Update</h2><p class="panel-copy">Prüfe die aktuelle GitHub-Release und starte ein verfügbares Update direkt aus der Anwendung.</p></div></div><div class="settings-form"><div class="update-status-row"><span>Installierte Version</span><strong id="update-current-version">–</strong></div><div class="update-status-row"><span>Neueste Release</span><strong id="update-latest-version">–</strong></div><p class="form-hint"><a id="update-release-link" href="#" target="_blank" rel="noreferrer" hidden>Release auf GitHub öffnen</a></p><div class="update-progress" id="update-progress-wrap" hidden><div class="update-progress-heading"><span id="update-progress-phase">Bereit</span><strong id="update-progress-value">0 %</strong></div><progress id="update-progress" max="100" value="0">0 %</progress></div><p class="form-hint update-status-message" id="update-status">Noch nicht geprüft.</p><div class="panel-actions"><button class="button button-secondary" id="update-check" type="button">Nach Release suchen</button><button class="button button-primary" id="update-start" type="button" disabled>Update installieren</button></div><p class="form-hint">Das Update lädt den freigegebenen Git-Stand, aktualisiert die Produktionsabhängigkeiten und startet den Dienst neu. Nach erfolgreichem Abschluss wird diese Seite automatisch neu geladen. Lokale Änderungen müssen vorher committed oder gesichert werden.</p></div></article>
             </div>
           </section>
         </main>
       </div>
     </div>
-    <script src="/app.js?v=0.3.11-10" type="module"></script>
+    <script src="/app.js?v=0.4.0-1" type="module"></script>
   </body>
 </html>

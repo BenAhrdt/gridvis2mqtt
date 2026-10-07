@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0] - 2026-10-07
+
+- Die Updateprüfung verwendet bei einem GitHub-Remote die aktuelle GitHub-Release und vergleicht deren SemVer-Version mit der installierten Anwendung.
+- Administratoren können eine verfügbare Release direkt in den Einstellungen starten. Download, Installation, Abhängigkeiten, Neustart und Erreichbarkeit werden mit Fortschritt und aktuellem Status angezeigt.
+- Nach einem erfolgreichen Web-Update lädt die Oberfläche automatisch einmal neu. Laufzeitdaten werden vor dem Update gesichert.
+- Das Changelog und die Release-Empfehlung folgen jetzt einer nachvollziehbaren SemVer-/GitHub-Release-Struktur.
+- Der Hinweis zur fehlenden Verbindung zu Janitza electronics GmbH wurde in der README ausdrücklich ergänzt.
+
 ## [0.3.11] - 2026-09-26
 
 - Historische Standardeinstellungen werden jetzt pro Gerät gespeichert. Zyklus, Versatz, Standard-Zeitbereiche und Vergleichszeiträume eines Geräts beeinflussen nur dieses Gerät; individuelle Messwert-Einstellungen überschreiben weiterhin die Gerätewerte.

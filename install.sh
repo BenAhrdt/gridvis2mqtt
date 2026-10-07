@@ -88,6 +88,9 @@ EnvironmentFile=/etc/$SERVICE_NAME.env
 ExecStart=$NODE_BIN $INSTALL_DIR/src/server.js
 Restart=on-failure
 RestartSec=5
+# Web-Updates laufen als detached Prozess weiter, während systemd den Dienst
+# neu startet. Der Update-Prozess schreibt seinen Status in die Datenablage.
+KillMode=process
 NoNewPrivileges=true
 PrivateTmp=true
 

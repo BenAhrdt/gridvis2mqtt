@@ -1,8 +1,8 @@
 import { createServer } from 'node:http';
-import { execFile as execFileCallback } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
+import { execFile as execFileCallback, spawn as spawnProcess } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { APP_NAME, APP_VERSION, getConfig, getPublicConfig, updateConfig } from './config.js';
@@ -31,6 +31,8 @@ import { LOGBOOK_MAX_ENTRIES, logbook } from './logbook.js';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const publicDir = join(root, 'public');
 const execFile = promisify(execFileCallback);
+const updateStatusPath = process.env.GRIDVIS2MQTT_UPDATE_STATUS_FILE
+  || join(process.env.GRIDVIS2MQTT_DATA_DIR || join(root, 'data'), 'update-status.json');
 const config = getConfig();
 const gridvis = new GridVisClient(config.gridvis);
 const mqtt = new MqttPublisher({
@@ -62,6 +64,7 @@ const liveValueCache = new Map();
 // latest value per scheduled job so the browser can render the same result
 // without starting another GridVis request.
 const historicalValueCache = new Map();
+let updateProcess = null;
 
 // All state-changing requests must commit in arrival order. Several of the
 // GridVis requests are deliberately asynchronous; without this queue an old
@@ -2441,6 +2444,112 @@ function validateBackup(input) {
   }
 }
 
+function parseApplicationVersion(value) {
+  const match = String(value || '').trim().replace(/^v/i, '').match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  if (!match) return null;
+  return {
+    core: [Number(match[1]), Number(match[2]), Number(match[3])],
+    prerelease: match[4] ? match[4].split('.') : []
+  };
+}
+
+function compareApplicationVersions(left, right) {
+  const a = parseApplicationVersion(left);
+  const b = parseApplicationVersion(right);
+  if (!a || !b) return null;
+  for (let index = 0; index < a.core.length; index += 1) {
+    if (a.core[index] !== b.core[index]) return a.core[index] > b.core[index] ? 1 : -1;
+  }
+  if (!a.prerelease.length && !b.prerelease.length) return 0;
+  if (!a.prerelease.length) return 1;
+  if (!b.prerelease.length) return -1;
+  for (let index = 0; index < Math.max(a.prerelease.length, b.prerelease.length); index += 1) {
+    if (index >= a.prerelease.length) return -1;
+    if (index >= b.prerelease.length) return 1;
+    const leftPart = a.prerelease[index];
+    const rightPart = b.prerelease[index];
+    if (leftPart === rightPart) continue;
+    const leftNumber = /^\d+$/.test(leftPart) ? Number(leftPart) : null;
+    const rightNumber = /^\d+$/.test(rightPart) ? Number(rightPart) : null;
+    if (leftNumber !== null && rightNumber !== null) return leftNumber > rightNumber ? 1 : -1;
+    if (leftNumber !== null) return -1;
+    if (rightNumber !== null) return 1;
+    return leftPart > rightPart ? 1 : -1;
+  }
+  return 0;
+}
+
+function githubRepositoryFromRemote(remote) {
+  const match = String(remote || '').trim().match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  return match ? { owner: match[1], repository: match[2] } : null;
+}
+
+async function getLatestGithubRelease(remote) {
+  const repository = githubRepositoryFromRemote(remote);
+  if (!repository) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  timeout.unref?.();
+  try {
+    const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.repository)}/releases/latest`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'GridVis2MQTT-update-check'
+      },
+      signal: controller.signal
+    });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`GitHub antwortet mit HTTP ${response.status}`);
+    const release = await response.json();
+    const version = String(release.tag_name || '').replace(/^v/i, '');
+    if (!parseApplicationVersion(version)) throw new Error('Die aktuelle GitHub-Release enthält keine gültige SemVer-Version.');
+    return {
+      version,
+      tagName: String(release.tag_name || `v${version}`),
+      name: String(release.name || `Version ${version}`),
+      url: String(release.html_url || `https://github.com/${repository.owner}/${repository.repository}/releases`),
+      publishedAt: release.published_at || release.created_at || ''
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readUpdateStatus() {
+  try {
+    const content = await readFile(updateStatusPath, 'utf8');
+    const parsed = JSON.parse(content);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    if (error.code === 'ENOENT') return {};
+    return { status: 'error', progress: 100, message: `Update-Status konnte nicht gelesen werden: ${error.message}` };
+  }
+}
+
+async function writeUpdateStatus(patch = {}) {
+  const previous = await readUpdateStatus();
+  const next = {
+    ...previous,
+    ...patch,
+    updatedAt: new Date().toISOString()
+  };
+  await mkdir(dirname(updateStatusPath), { recursive: true });
+  const temporaryPath = `${updateStatusPath}.${process.pid}.tmp`;
+  await writeFile(temporaryPath, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  await rename(temporaryPath, updateStatusPath);
+  return next;
+}
+
+function isProcessAlive(pid) {
+  if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return false;
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function checkForUpdates() {
   const result = {
     currentVersion: APP_VERSION,
@@ -2449,6 +2558,8 @@ async function checkForUpdates() {
     updateAvailable: false,
     commitsBehind: 0,
     dirty: false,
+    latestRelease: null,
+    releaseCheck: 'not-available',
     message: 'Kein Git-Remote eingerichtet.'
   };
   try {
@@ -2465,26 +2576,114 @@ async function checkForUpdates() {
       return result;
     }
 
+    let releaseError = null;
+    if (githubRepositoryFromRemote(result.remote)) {
+      try {
+        result.latestRelease = await getLatestGithubRelease(result.remote);
+        result.releaseCheck = result.latestRelease ? 'ok' : 'none';
+      } catch (error) {
+        releaseError = error;
+        result.releaseCheck = 'error';
+      }
+    }
+
     try {
-      await execFile('git', ['-C', root, 'fetch', '--dry-run', '--quiet', '--all'], { timeout: 15000 });
+      // Update the remote-tracking refs before comparing them. A dry-run fetch
+      // leaves the old refs in place and can report a stale result.
+      await execFile('git', ['-C', root, 'fetch', '--all', '--tags', '--prune', '--quiet'], { timeout: 30000 });
       const upstream = await execFile('git', ['-C', root, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], { timeout: 5000 });
       if (upstream.stdout.trim()) {
         const ahead = await execFile('git', ['-C', root, 'rev-list', '--count', `HEAD..${upstream.stdout.trim()}`], { timeout: 5000 });
         result.commitsBehind = Number(ahead.stdout.trim()) || 0;
-        result.updateAvailable = result.commitsBehind > 0;
-        result.message = result.updateAvailable
-          ? `${result.commitsBehind} Update(s) verfügbar.`
-          : 'Die installierte Version ist aktuell.';
-      } else {
-        result.message = 'Kein Upstream-Branch für das Repository eingerichtet.';
       }
     } catch (error) {
-      result.message = `Update konnte nicht geprüft werden: ${error.message}`;
+      if (!result.latestRelease) result.message = `Update konnte nicht geprüft werden: ${error.message}`;
+    }
+
+    const releaseComparison = result.latestRelease
+      ? compareApplicationVersions(result.latestRelease.version, APP_VERSION)
+      : null;
+    if (releaseComparison !== null) {
+      result.updateAvailable = releaseComparison > 0;
+      result.message = result.updateAvailable
+        ? `Neue Release ${result.latestRelease.tagName} verfügbar.`
+        : `Keine neue Release verfügbar. Installiert ist ${APP_VERSION}.`;
+      if (!result.updateAvailable && result.commitsBehind > 0) {
+        result.message += ` Zusätzlich liegen ${result.commitsBehind} nicht veröffentlichte Commits im Upstream.`;
+      }
+    } else if (result.commitsBehind > 0) {
+      result.message = releaseError
+        ? `${result.commitsBehind} Update-Commit(s) verfügbar; eine gültige GitHub-Release konnte nicht geprüft werden.`
+        : `${result.commitsBehind} Update-Commit(s) verfügbar, aber keine neue GitHub-Release ist freigegeben.`;
+    } else if (!result.message || result.message === 'Kein Git-Remote eingerichtet.') {
+      result.message = result.releaseCheck === 'none'
+        ? 'Noch keine GitHub-Release veröffentlicht.'
+        : 'Die installierte Version ist aktuell.';
     }
   } catch {
     // A source checkout is optional in packaged/manual deployments.
   }
   return result;
+}
+
+async function startApplicationUpdate() {
+  const existing = await readUpdateStatus();
+  if (updateProcess || (existing.status === 'running' && (!existing.pid || isProcessAlive(existing.pid)))) {
+    throw new Error('Ein Update läuft bereits.');
+  }
+
+  const update = await checkForUpdates();
+  if (!update.supported) throw new Error('Für Web-Updates muss ein Git-Remote namens origin eingerichtet sein.');
+  if (!githubRepositoryFromRemote(update.remote) || !update.latestRelease) {
+    throw new Error('Für Web-Updates muss eine gültige GitHub-Release verfügbar sein.');
+  }
+  if (update.dirty) throw new Error(update.message);
+  if (!update.updateAvailable) throw new Error(update.message || 'Keine neue Release verfügbar.');
+
+  const operationId = `${Date.now()}-${randomUUID()}`;
+  const startedAt = new Date().toISOString();
+  await writeUpdateStatus({
+    operationId,
+    status: 'running',
+    phase: 'prepare',
+    progress: 1,
+    message: 'Update wird vorbereitet ...',
+    currentVersion: APP_VERSION,
+    targetVersion: update.latestRelease?.version || '',
+    releaseUrl: update.latestRelease?.url || '',
+    startedAt,
+    pid: null
+  });
+
+  try {
+    const child = spawnProcess('bash', [join(root, 'update.sh')], {
+      cwd: root,
+      detached: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        GRIDVIS2MQTT_UPDATE_STATUS_FILE: updateStatusPath,
+        GRIDVIS2MQTT_UPDATE_OPERATION_ID: operationId,
+        GRIDVIS2MQTT_UPDATE_TARGET_VERSION: update.latestRelease?.version || ''
+      }
+    });
+    updateProcess = child;
+    child.unref();
+    child.once('error', async (error) => {
+      updateProcess = null;
+      const current = await readUpdateStatus();
+      if (current.operationId === operationId && current.status === 'running') {
+        await writeUpdateStatus({ status: 'error', phase: 'error', progress: 100, message: `Update konnte nicht gestartet werden: ${error.message}` });
+      }
+    });
+    child.once('exit', () => {
+      if (updateProcess === child) updateProcess = null;
+    });
+    return writeUpdateStatus({ pid: child.pid });
+  } catch (error) {
+    await writeUpdateStatus({ status: 'error', phase: 'error', progress: 100, message: `Update konnte nicht gestartet werden: ${error.message}` });
+    throw error;
+  }
 }
 
 async function readBody(request) {
@@ -2746,6 +2945,35 @@ async function handleApi(request, response, url) {
 
   if (request.method === 'GET' && url.pathname === '/api/update/check') {
     return sendJson(response, 200, { ok: true, update: await checkForUpdates() });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/update/status') {
+    const update = await readUpdateStatus();
+    return sendJson(response, 200, {
+      ok: true,
+      update: {
+        status: 'idle',
+        phase: 'idle',
+        progress: 0,
+        currentVersion: APP_VERSION,
+        message: 'Noch kein Update gestartet.',
+        ...update,
+        // The status file intentionally keeps the version from before the
+        // update for rollback diagnostics. The API reports what is installed
+        // in the currently running server.
+        currentVersion: APP_VERSION
+      }
+    });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/update/start') {
+    const admin = requireAdmin(request);
+    if (!admin.ok) return sendJson(response, admin.status, { ok: false, error: admin.error, code: admin.code });
+    try {
+      return sendJson(response, 202, { ok: true, update: await startApplicationUpdate() });
+    } catch (error) {
+      return sendJson(response, 409, { ok: false, error: error.message });
+    }
   }
 
   if (request.method === 'GET' && url.pathname === '/api/backup') {

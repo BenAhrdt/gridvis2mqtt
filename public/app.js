@@ -78,6 +78,9 @@ const state = {
   historicalDragMeasurementKey: '',
   mqttStateReadyAt: 0,
   mqttTestStatus: {},
+  updateCheck: null,
+  updateStatus: null,
+  updatePollTimer: null,
   toastTimer: null
 };
 
@@ -5479,13 +5482,18 @@ function renderAuthUsers(users = []) {
 }
 
 async function loadAdministration() {
-  const result = await api('/api/auth/profile');
+  const [result, updateResult] = await Promise.all([
+    api('/api/auth/profile'),
+    api('/api/update/status')
+  ]);
   state.auth = result.profile || state.auth;
   $('#profile-username').value = state.auth?.username || '';
   renderAuthUsers(result.users || []);
   const isAdmin = state.auth?.role === 'admin';
   const management = $('#user-management-panel');
   if (management) management.hidden = !isAdmin;
+  state.updateStatus = updateResult.update || null;
+  renderUpdatePanel();
 }
 
 async function submitProfile(event) {
@@ -5640,6 +5648,131 @@ async function restoreBackup() {
   }
 }
 
+function updateProgressValue(status = {}) {
+  const value = Number(status.progress);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+}
+
+function renderUpdatePanel() {
+  const check = state.updateCheck || {};
+  const status = state.updateStatus || {};
+  const statusKind = status.status || 'idle';
+  const active = statusKind === 'running';
+  const hasFinished = statusKind === 'success' || statusKind === 'error';
+  const progress = updateProgressValue(status);
+  const phaseLabels = {
+    prepare: 'Vorbereitung',
+    backup: 'Laufzeitdaten sichern',
+    download: 'Download',
+    install: 'Release installieren',
+    dependencies: 'Abhängigkeiten aktualisieren',
+    restart: 'Dienst neu starten',
+    health: 'Erreichbarkeit prüfen',
+    complete: 'Abgeschlossen',
+    error: 'Fehler'
+  };
+  const currentVersion = check.currentVersion || status.currentVersion || state.config?.version || '';
+  const latestRelease = check.latestRelease || null;
+  const latestVersion = latestRelease?.tagName || status.targetVersion || '';
+  setText('#update-current-version', currentVersion ? `v${currentVersion}` : '–');
+  setText('#update-latest-version', latestVersion ? `v${latestVersion.replace(/^v/i, '')}` : '–');
+  const releaseLink = $('#update-release-link');
+  if (releaseLink) {
+    const releaseUrl = latestRelease?.url || status.releaseUrl || '';
+    releaseLink.hidden = !releaseUrl;
+    releaseLink.href = releaseUrl || '#';
+  }
+
+  const progressWrap = $('#update-progress-wrap');
+  if (progressWrap) progressWrap.hidden = !(active || hasFinished);
+  const progressElement = $('#update-progress');
+  if (progressElement) progressElement.value = progress;
+  setText('#update-progress-value', `${progress} %`);
+  setText('#update-progress-phase', active ? (phaseLabels[status.phase] || status.phase || 'Update läuft') : (phaseLabels[statusKind] || 'Bereit'));
+
+  const statusMessage = active || hasFinished
+    ? (status.message || 'Update-Status wird geladen ...')
+    : (check.message || status.message || 'Noch nicht geprüft.');
+  setText('#update-status', statusMessage);
+
+  const checkButton = $('#update-check');
+  const startButton = $('#update-start');
+  if (checkButton) checkButton.disabled = active;
+  if (startButton) {
+    startButton.disabled = active || !check.updateAvailable || state.auth?.role !== 'admin';
+    startButton.textContent = active ? 'Update läuft ...' : 'Update installieren';
+  }
+}
+
+async function loadUpdateStatus() {
+  const result = await api('/api/update/status');
+  state.updateStatus = result.update || {};
+  renderUpdatePanel();
+  return state.updateStatus;
+}
+
+function stopUpdatePolling() {
+  if (state.updatePollTimer) {
+    clearTimeout(state.updatePollTimer);
+    state.updatePollTimer = null;
+  }
+}
+
+function reloadAfterUpdate(operationId) {
+  if (!operationId) return;
+  const storageKey = `gridvis2mqtt-update-reloaded:${operationId}`;
+  if (sessionStorage.getItem(storageKey)) return;
+  sessionStorage.setItem(storageKey, 'true');
+  showToast('Update erfolgreich. Die Seite wird neu geladen.', 'success');
+  window.setTimeout(() => window.location.reload(), 900);
+}
+
+function pollApplicationUpdate(operationId) {
+  stopUpdatePolling();
+  const poll = async () => {
+    try {
+      await loadUpdateStatus();
+      const status = state.updateStatus || {};
+      if (status.operationId !== operationId || status.status === 'running') {
+        state.updatePollTimer = window.setTimeout(poll, 1200);
+        return;
+      }
+      if (status.status === 'success') reloadAfterUpdate(operationId);
+      else if (status.status === 'error') showToast(status.message || 'Update fehlgeschlagen.', 'error');
+      stopUpdatePolling();
+    } catch (error) {
+      // During systemd restart the API is briefly unreachable. Keep polling;
+      // the status file is persistent and will be available after startup.
+      state.updatePollTimer = window.setTimeout(poll, 1500);
+      if (!state.updateStatus || state.updateStatus.status !== 'running') setText('#update-status', 'Webanwendung wird neu gestartet ...');
+      console.debug('Update-Status vorübergehend nicht erreichbar:', error.message);
+    }
+  };
+  void poll();
+}
+
+async function startApplicationUpdate() {
+  if (state.auth?.role !== 'admin') throw new Error('Nur Administratoren dürfen Updates starten.');
+  const button = $('#update-start');
+  if (button) button.disabled = true;
+  if (!await requestConfirmation({
+    title: 'Update installieren?',
+    message: 'Die Anwendung lädt die aktuelle GitHub-Release herunter und startet den Dienst neu. Fortfahren?',
+    confirmLabel: 'Update starten'
+  })) {
+    renderUpdatePanel();
+    return;
+  }
+  try {
+    const result = await api('/api/update/start', { method: 'POST' });
+    state.updateStatus = result.update || {};
+    renderUpdatePanel();
+    pollApplicationUpdate(state.updateStatus.operationId);
+  } finally {
+    if (button && state.updateStatus?.status !== 'running') renderUpdatePanel();
+  }
+}
+
 async function checkForUpdate() {
   const button = $('#update-check');
   const originalLabel = button?.textContent || 'Update prüfen';
@@ -5649,9 +5782,9 @@ async function checkForUpdate() {
   }
   try {
     const result = await api('/api/update/check');
-    const update = result.update || {};
-    setText('#update-current-version', update.currentVersion ? `v${update.currentVersion}` : '–');
-    setText('#update-status', update.message || 'Kein Update-Status verfügbar.');
+    state.updateCheck = result.update || {};
+    renderUpdatePanel();
+    const update = state.updateCheck;
     if (update.updateAvailable) showToast(update.message, 'success');
     else if (!update.supported) showToast(update.message, 'warning');
     else showToast(update.message, 'success');
@@ -5660,6 +5793,7 @@ async function checkForUpdate() {
       button.disabled = false;
       button.textContent = originalLabel;
     }
+    renderUpdatePanel();
   }
 }
 
@@ -7101,6 +7235,7 @@ function attachEvents() {
   $('#backup-file')?.addEventListener('change', (event) => selectBackupFile(event).catch(showError));
   $('#backup-restore')?.addEventListener('click', () => restoreBackup().catch(showError));
   $('#update-check')?.addEventListener('click', () => checkForUpdate().catch(showError));
+  $('#update-start')?.addEventListener('click', () => startApplicationUpdate().catch(showError));
   $$('[data-view-link]').forEach((link) => link.addEventListener('click', (event) => {
     event.preventDefault();
     setView(link.dataset.viewLink);
