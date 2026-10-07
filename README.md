@@ -49,36 +49,63 @@ Die Oberfläche ist anschließend unter [http://localhost:8080](http://localhost
 
 Die folgende Erstinstallation ist für ein frisches Debian-13-System beziehungsweise einen Debian-13-LXC beschrieben. Sie wird als `root` ausgeführt; bei einer Anmeldung mit einem normalen Benutzer kann `sudo` vor die Systembefehle gesetzt werden.
 
+### 1. System vorbereiten
+
 ```bash
-# System aktualisieren und benötigte Werkzeuge installieren
 apt update
 apt upgrade -y
-apt install -y ca-certificates git nodejs npm
+apt install -y ca-certificates curl git
+```
 
-# install.sh benötigt Node.js >= 20.19 und npm
+### 2. Node.js 24 installieren
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_24.x \
+  -o /tmp/nodesource_setup_24.x
+bash /tmp/nodesource_setup_24.x
+apt install -y nodejs
+```
+
+### 3. Versionen kontrollieren
+
+```bash
 git --version
 node --version
 npm --version
+```
 
-# Das öffentliche Repository zunächst in ein temporäres Arbeitsverzeichnis klonen.
-# Der Klon enthält .git, origin und den Upstream-Branch für spätere Updates.
+`node --version` sollte eine Version `v24.x` ausgeben. NodeSource dokumentiert den Debian-Installationsweg in der [Node.js-24-Anleitung](https://github.com/nodesource/distributions/blob/master/DEV_README.md).
+
+### 4. Repository klonen
+
+```bash
 BOOTSTRAP_DIR="$(mktemp -d /tmp/gridvis2mqtt-bootstrap.XXXXXX)"
 git clone --branch main https://github.com/BenAhrdt/gridvis2mqtt.git "$BOOTSTRAP_DIR"
 cd "$BOOTSTRAP_DIR"
+```
 
-# Anwendung installieren; die Standardwerte sind /opt, /var/lib und Port 8080.
+Der Klon enthält `.git`, `origin` und den Upstream-Branch für spätere Updates.
+
+### 5. Anwendung installieren
+
+```bash
 GRIDVIS2MQTT_INSTALL_DIR=/opt/gridvis2mqtt \
 GRIDVIS2MQTT_DATA_DIR=/var/lib/gridvis2mqtt \
 GRIDVIS2MQTT_PORT=8080 \
 ./install.sh
+```
 
-# Dienst und installierte Version kontrollieren
+Die Standardwerte sind `/opt/gridvis2mqtt`, `/var/lib/gridvis2mqtt` und Port `8080`.
+
+### 6. Installation kontrollieren
+
+```bash
 systemctl status gridvis2mqtt --no-pager
 node -p "require('/opt/gridvis2mqtt/package.json').version"
 git -C /opt/gridvis2mqtt remote -v
 ```
 
-Wenn `node --version` kleiner als `v20.19.0` ist, muss zuerst eine neuere Node.js-Version installiert werden. `install.sh` bricht bei einer zu alten Version absichtlich ab. Nach erfolgreicher Installation ist die Oberfläche unter `http://<LXC-IP>:8080` erreichbar. Die produktiven Einstellungen, Zustände und Zugangsdaten liegen getrennt unter `/var/lib/gridvis2mqtt`; der Anwendungscode und sein Git-Klon liegen unter `/opt/gridvis2mqtt`.
+Nach erfolgreicher Installation ist die Oberfläche unter `http://<LXC-IP>:8080` erreichbar. Die produktiven Einstellungen, Zustände und Zugangsdaten liegen getrennt unter `/var/lib/gridvis2mqtt`; der Anwendungscode und sein Git-Klon liegen unter `/opt/gridvis2mqtt`.
 
 ## Installation und Update
 

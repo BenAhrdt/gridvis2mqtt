@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.3] - 2026-10-07
+
+- Die Debian-13-Erstinstallation ist in einzelne kopierbare Bash-Schritte aufgeteilt und installiert Node.js 24.
+- GitHub Actions testet die Anwendung zusätzlich mit Node.js 24.
+
 ## [0.4.2] - 2026-10-07
 
 - Die README dokumentiert jetzt eine vollständige Erstinstallation auf Debian 13 mit Systempaketen, Git-Clone, `install.sh`, systemd-Prüfung und dem anschließenden Webzugriff.
