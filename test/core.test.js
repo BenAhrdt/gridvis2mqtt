@@ -2,8 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildBridgeApplicationUrlDiscovery, buildBridgeDiscovery, buildDeviceInfoDiscoveries, buildHomeAssistantDiscovery } from '../src/discovery/home-assistant.js';
 import { GridVisClient, groupOnlineValueRequests, normalizeOnlineValues } from '../src/gridvis-client.js';
+import { listDataFromResponse } from '../src/list-data.js';
 import { MqttPublisher } from '../src/mqtt-publisher.js';
 import { applyMqttOverviewRows } from '../src/mqtt-overview.js';
+
+test('extracts wrapped GridVis device lists for the backend cache', () => {
+  const devices = listDataFromResponse({
+    data: {
+      devices: [{ id: 45, name: 'VD 1A' }]
+    }
+  });
+
+  assert.deepEqual(devices, [{ id: 45, name: 'VD 1A' }]);
+});
 
 test('applies bulk MQTT overview actions while keeping disable and remove separate', () => {
   const state = {

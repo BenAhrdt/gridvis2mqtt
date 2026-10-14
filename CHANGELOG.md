@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.4] - 2026-10-14
+
+- MQTT-Übersicht und Home-Assistant-Discovery verwenden jetzt zuverlässig den konfigurierten GridVis-Gerätenamen statt nur der Geräte-ID.
+- Gewrappte GridVis-Geräteantworten werden im Backend-Cache berücksichtigt; bestehende MQTT-Discoveries werden beim Aktualisieren der Geräteliste mit den korrekten Namen neu veröffentlicht.
+
 ## [0.4.3] - 2026-10-07
 
 - Die Debian-13-Erstinstallation ist in einzelne kopierbare Bash-Schritte aufgeteilt und installiert Node.js 24.

@@ -22,6 +22,7 @@ import {
   verifyUserPassword
 } from './auth.js';
 import { GridVisClient, normalizeOnlineValues } from './gridvis-client.js';
+import { listDataFromResponse } from './list-data.js';
 import { buildBridgeApplicationUrlDiscovery, buildBridgeDiscovery, buildDeviceInfoDiscoveries, buildDiscoveryMessages, normalizeDiscoveryPrefix } from './discovery/home-assistant.js';
 import { MqttPublisher } from './mqtt-publisher.js';
 import { applyMqttOverviewRows } from './mqtt-overview.js';
@@ -478,19 +479,6 @@ function stateForBrowser(snapshot = {}) {
   return browserState;
 }
 
-function listDataFromResponse(data) {
-  if (Array.isArray(data)) return data;
-  if (!data || typeof data !== 'object') return [];
-  for (const key of ['projects', 'project', 'devices', 'device', 'items', 'results', 'data', 'value']) {
-    if (Array.isArray(data[key])) return data[key];
-    if (data[key] && typeof data[key] === 'object') {
-      const nested = listDataFromResponse(data[key]);
-      if (nested.length) return nested;
-    }
-  }
-  return Object.values(data).flatMap((value) => Array.isArray(value) ? value : []);
-}
-
 function persistProjects(projects) {
   const entries = listDataFromResponse(projects);
   if (projects == null) return;
@@ -507,9 +495,14 @@ function persistDeviceList(project, devices) {
   const previousById = new Map(previousDevices.map((device) => [stateItemId(device), device]));
   nextState.deviceCache[project] = entries.map((device) => {
     const previous = previousById.get(stateItemId(device));
-    return previous?.info ? replaceDeviceDetail(device, previous) : structuredClone(device);
+    if (!previous?.info) return structuredClone(device);
+    // Keep cached connection details, but let the fresh device list win for
+    // user-facing fields such as the configured name.
+    const merged = structuredClone(device);
+    merged.info = { ...structuredClone(previous.info), ...(device.info || {}) };
+    return merged;
   });
-  updateState(nextState);
+  return updateState(nextState);
 }
 
 function persistMeasurementDefinitions(project, deviceId, field, values) {
@@ -3347,12 +3340,22 @@ async function handleApi(request, response, url) {
     }
     if (request.method === 'GET' && url.pathname === '/api/gridvis/projects') {
       const data = await gridvis.getProjects();
-      if (Array.isArray(data)) await enqueueStateMutation(() => persistProjects(data));
+      if (data !== null && data !== undefined) await enqueueStateMutation(() => persistProjects(data));
       return sendJson(response, 200, { ok: true, data });
     }
     if (request.method === 'GET' && parts[0] === 'api' && parts[1] === 'gridvis' && parts[2] === 'projects' && parts[4] === 'devices' && parts.length === 5) {
       const data = await gridvis.getDevices(parts[3]);
-      if (Array.isArray(data)) await enqueueStateMutation(() => persistDeviceList(parts[3], data));
+      // GridVis may return either the array itself or an object containing the
+      // array. Persist both forms so later MQTT discovery can resolve the
+      // configured device name instead of falling back to the numeric ID.
+      if (data !== null && data !== undefined) {
+        const previousState = getState();
+        const nextState = await enqueueStateMutation(() => persistDeviceList(parts[3], data));
+        const previousMessages = activeDiscoveryMessagesFromState(previousState);
+        const nextMessages = activeDiscoveryMessagesFromState(nextState);
+        await mqtt.reconcileRetainedDiscovery(activeDiscoveryKeysFromState(nextState));
+        await syncNewStateToConnectedBrokers(previousState, nextState, { previousMessages, nextMessages });
+      }
       return sendJson(response, 200, { ok: true, data });
     }
     if (request.method === 'GET' && parts[0] === 'api' && parts[1] === 'gridvis' && parts[2] === 'projects' && parts[4] === 'deviceicon' && parts.length === 6) {

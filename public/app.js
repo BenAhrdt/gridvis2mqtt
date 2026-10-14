@@ -3145,13 +3145,15 @@ async function refreshBackendHistoricalResults(project, id) {
 }
 
 async function persistBackendDeviceState(project, id, cache) {
+  const knownDevice = state.devices.find((entry) => String(deviceId(entry)) === String(id));
   const result = await api('/api/state/device', {
     method: 'PUT',
     body: JSON.stringify({
       project,
       deviceId: String(id),
       loaded: true,
-      cache
+      cache,
+      ...(knownDevice ? { device: knownDevice } : {})
     })
   });
   if (result.state?.mqttDeviceCounts && typeof result.state.mqttDeviceCounts === 'object') state.mqttDeviceCounts = result.state.mqttDeviceCounts;
