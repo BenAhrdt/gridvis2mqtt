@@ -37,6 +37,8 @@ const state = {
   mqttOverview: { project: '', rows: [], summary: {} },
   mqttOverviewSelection: new Set(),
   mqttOverviewActionInFlight: false,
+  mqttOverviewRefreshTimer: null,
+  mqttOverviewRequestInFlight: false,
   selectedDeviceIds: {},
   measurementCache: {},
   backendDeviceStateKey: '',
@@ -679,6 +681,16 @@ function configureConnectionStatusRefresh() {
   }, 5000);
 }
 
+function configureMqttOverviewRefresh() {
+  clearInterval(state.mqttOverviewRefreshTimer);
+  state.mqttOverviewRefreshTimer = null;
+  if (state.currentView !== 'mqtt') return;
+  state.mqttOverviewRefreshTimer = setInterval(() => {
+    if (document.visibilityState === 'hidden') return;
+    loadMqttOverview({ silent: true }).catch(reportBackgroundError);
+  }, 2000);
+}
+
 function showError(error) {
   const message = error?.message || String(error);
   setStatus(message, false);
@@ -760,6 +772,7 @@ function setView(view, updateHash = true) {
   configureHistoricalRefresh();
   configureLogbookRefresh();
   configureDeviceInfoRefresh();
+  configureMqttOverviewRefresh();
   if (view === 'logbook') loadLogbook({ silent: true }).catch(reportLogbookError);
   if (view === 'administration') loadAdministration().catch(showError);
   if (view === 'mqtt') loadMqttOverview({ silent: true }).catch(reportBackgroundError);
@@ -916,20 +929,26 @@ function renderMqttOverview() {
 }
 
 async function loadMqttOverview({ silent = false } = {}) {
+  if (state.mqttOverviewRequestInFlight) return;
+  state.mqttOverviewRequestInFlight = true;
   const project = $('#project-select')?.value || '';
-  if (!project) {
-    state.mqttOverview = { project: '', rows: [], summary: {} };
+  try {
+    if (!project) {
+      state.mqttOverview = { project: '', rows: [], summary: {} };
+      renderMqttOverview();
+      return;
+    }
+    if (!silent) setText('#mqtt-overview-status-text', 'Lade MQTT-Übersicht …');
+    const result = await api(`/api/mqtt/overview?project=${encodeURIComponent(project)}`);
+    state.mqttOverview = {
+      project,
+      rows: Array.isArray(result.rows) ? result.rows : [],
+      summary: result.summary && typeof result.summary === 'object' ? result.summary : {}
+    };
     renderMqttOverview();
-    return;
+  } finally {
+    state.mqttOverviewRequestInFlight = false;
   }
-  if (!silent) setText('#mqtt-overview-status-text', 'Lade MQTT-Übersicht …');
-  const result = await api(`/api/mqtt/overview?project=${encodeURIComponent(project)}`);
-  state.mqttOverview = {
-    project,
-    rows: Array.isArray(result.rows) ? result.rows : [],
-    summary: result.summary && typeof result.summary === 'object' ? result.summary : {}
-  };
-  renderMqttOverview();
 }
 
 function mqttOverviewRowFromButton(button) {
@@ -5844,6 +5863,7 @@ async function loadInitial() {
   updateMqttState();
   updateTopbarGridvisStatus();
   configureConnectionStatusRefresh();
+  configureMqttOverviewRefresh();
   configureLiveRefresh();
   if ($('#device-sort')) $('#device-sort').value = state.deviceSort;
   if (!state.config.gridvis.configured) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.5] - 2026-10-14
+
+- Die MQTT-Übersicht aktualisiert Livewerte jetzt automatisch im angezeigten 2-Sekunden-Zyklus.
+- Parallele Übersichtsabfragen werden verhindert; im Hintergrund bzw. bei ausgeblendetem Tab wird nicht unnötig gepollt.
+
 ## [0.4.4] - 2026-10-14
 
 - MQTT-Übersicht und Home-Assistant-Discovery verwenden jetzt zuverlässig den konfigurierten GridVis-Gerätenamen statt nur der Geräte-ID.
