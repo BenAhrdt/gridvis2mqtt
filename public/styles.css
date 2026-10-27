@@ -1792,6 +1792,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   min-width: 0;
   width: 100%;
 }
+.measurement-display-name-field {
+  grid-column: 1 / -1;
+}
 .measurement-display-preview {
   color: var(--ink);
   font-size: 21px;

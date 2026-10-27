@@ -953,7 +953,8 @@ function onlineDiscoveryKeysFromState(snapshot = {}) {
 
 function mqttOverviewMeasurementName(measurement = {}) {
   return String(
-    measurement.name
+    measurement.displaySettings?.name
+      || measurement.name
       || measurement.label
       || measurement.displayName
       || measurement.measurementName
@@ -1061,12 +1062,16 @@ function mqttOverviewRows(snapshot = {}, project = '') {
         const profileIds = [...new Set(assignedProfileIds)]
           .filter((id) => profileNames.has(id) && profiles.find((profile) => profile.id === id)?.enabled !== false);
         if (!profileIds.length) continue;
+        const displayMeasurement = {
+          ...measurement,
+          displaySettings: cache.displaySettings?.[measurementKey] || measurement.displaySettings
+        };
         rows.push({
           project: cacheProject,
           deviceId,
           deviceName,
           measurementKey,
-          name: mqttOverviewMeasurementName(measurement),
+          name: mqttOverviewMeasurementName(displayMeasurement),
           value: String(measurement.value),
           type: String(measurement.type),
           typeLabel: String(measurement.typeLabel || measurement.type),
@@ -1211,11 +1216,12 @@ function activeLiveJobsFromState(snapshot = {}, brokerId = '') {
       });
       if (!profileIds.length) continue;
       const deviceRefreshInterval = Number(deviceRefreshIntervals[cacheKey]) || 0;
+      const displaySettings = cache.displaySettings?.[measurementKey] || measurement.displaySettings;
       jobs.push({
         project,
         deviceId,
         device,
-        measurement,
+        measurement: { ...measurement, ...(displaySettings ? { displaySettings } : {}) },
         profileIds,
         retainState: cache.mqttRetainAssignments?.[measurementKey] === true,
         refreshInterval: LIVE_REFRESH_INTERVALS.has(deviceRefreshInterval)
@@ -1746,13 +1752,14 @@ function historicalJobsFromState(snapshot = {}, brokerId = '') {
         Array.isArray(settings.ranges) && settings.ranges.length ? settings.ranges : deviceRanges,
         comparisons
       );
+      const displaySettings = cache.displaySettings?.[measurementKey] || measurement.displaySettings;
       for (const range of ranges) {
         jobs.push({
           key: `${project}::${deviceId}::${measurementKey}::${range}`,
           project,
           deviceId,
           device,
-          measurement,
+          measurement: { ...measurement, ...(displaySettings ? { displaySettings } : {}) },
           range,
           interval,
           energy,

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.8] - 2026-10-27
+
+- Messwerte können pro Projekt, Gerät und Messwert optional mit einem eigenen Anzeigenamen versehen werden.
+- Der eigene Anzeigename wird in den Live-/Historienkacheln, der Schnellübersicht und der Home-Assistant-Discovery verwendet; API-Wert, State-Topic und `unique_id` bleiben stabil.
+- Die Anzeigeeinstellung wird im Backend-Gerätezustand gespeichert und bleibt dadurch auch nach Neustart sowie bei späteren MQTT-Abrufen erhalten.
+
 ## [0.4.7] - 2026-10-27
 
 - Historische MQTT-State-Werte werden standardmäßig retained veröffentlicht; Livewerte bleiben standardmäßig nicht retained.

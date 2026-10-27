@@ -52,6 +52,13 @@ test('handles unavailable values and ignores invalid display settings', () => {
   assert.deepEqual(display.measurementDisplayUnits({ unit: '°C' }), []);
 });
 
+test('supports optional custom display names without changing the measurement identity', () => {
+  const settings = display.normalizeDisplaySettings({ name: '  Kellerzähler  ', unit: 'kWh', decimals: 2 }, energy);
+  assert.deepEqual(settings, { name: 'Kellerzähler', unit: 'kWh', decimals: 2 });
+  assert.equal(display.measurementDisplayName({ ...energy, displaySettings: settings }), 'Kellerzähler');
+  assert.deepEqual(display.normalizeDisplaySettings({ name: '   ' }, energy), {});
+});
+
 test('discovers active energy counters with native Wh and unambiguous names', () => {
   for (const [value, name] of [
     ['ActiveEnergy', 'Wirkarbeit'], ['ActiveEnergyConsumed', 'Bezogene Wirkarbeit'], ['ActiveEnergyDelivered', 'Gelieferte Wirkarbeit']
@@ -65,6 +72,8 @@ test('discovers active energy counters with native Wh and unambiguous names', ()
   }
   const net = buildHomeAssistantDiscovery({ device: { id: 26 }, measurement: { value: 'ActiveEnergyNet', name: 'Nettoenergie', unit: 'Wh' } });
   assert.equal(net.payload.state_class, 'total');
+  const custom = buildHomeAssistantDiscovery({ device: { id: 26 }, measurement: { ...energy, displaySettings: { name: 'Hausverbrauch', decimals: 2 } } });
+  assert.equal(custom.payload.name, 'Hausverbrauch');
 });
 
 test('uses HA-compatible classes and native units for electrical measurements', () => {

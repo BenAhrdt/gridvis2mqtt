@@ -8,6 +8,10 @@ const ENERGY_NAMES = {
 };
 
 export function measurementDisplayName(measurement) {
+  const customName = typeof measurement?.displaySettings?.name === 'string'
+    ? measurement.displaySettings.name.trim()
+    : '';
+  if (customName) return customName;
   const name = ENERGY_NAMES[measurement.value] || measurement.name || measurement.value || 'Messwert';
   const channel = measurement.typeLabel || measurement.type;
   return !channel || channel === 'Overall' || name.endsWith(` ${channel}`) ? name : `${name} ${channel}`;
@@ -29,6 +33,8 @@ export function measurementDisplayUnits(measurement) {
 export function normalizeDisplaySettings(settings = {}, measurement) {
   if (!settings || typeof settings !== 'object') return {};
   const normalized = {};
+  const name = typeof settings.name === 'string' ? settings.name.trim().slice(0, 120) : '';
+  if (name) normalized.name = name;
   if (settings.unit === 'api' || measurementDisplayUnits(measurement).includes(settings.unit)) normalized.unit = settings.unit;
   if (Number.isInteger(settings.decimals) && settings.decimals >= 0 && settings.decimals <= 6) normalized.decimals = settings.decimals;
   return normalized;

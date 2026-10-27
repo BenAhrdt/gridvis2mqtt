@@ -3162,6 +3162,11 @@ async function loadBackendDeviceState(project, id, selectionToken = null, { acti
     state.measurementCache[key] = data.measurementCache && typeof data.measurementCache === 'object'
       ? data.measurementCache
       : {};
+    if (activate) {
+      state.displaySettings = state.measurementCache[key].displaySettings && typeof state.measurementCache[key].displaySettings === 'object'
+        ? state.measurementCache[key].displaySettings
+        : {};
+    }
     if (activate && String(id) === String(deviceId(state.currentDevice || {}))) {
       state.historicalResults = {
         ...state.historicalResults,
@@ -3452,14 +3457,16 @@ function createMeasurementCard(measurement, { result, deviceIdValue, mqttActive,
   const card = document.createElement('article');
   card.className = `measurement-card${historical ? ' historical-measurement-card' : ''}`;
   card.dataset.measurementKey = measurementKey(measurement);
-  card.innerHTML = `<div class="measurement-card-top"><div><h3>${escapeHtml(measurementDisplayName(measurement))}</h3><small class="measurement-card-meta">${escapeHtml(measurement.value)} · ${escapeHtml(measurement.typeLabel || measurement.type)}</small></div><button class="measurement-card-remove" type="button" data-measurement-remove aria-label="${escapeHtml(measurementDisplayName(measurement))} abwählen" title="Messwert abwählen">×</button></div><div class="measurement-card-value">${valueMarkup(measurement, result, deviceIdValue)}</div><div class="measurement-card-controls"><button class="button button-quiet" type="button" data-measurement-settings>Einstellungen</button><label><input type="checkbox" data-measurement-mqtt${mqttActive ? ' checked' : ''}> MQTT aktiv</label></div>`;
+  const displayMeasurement = { ...measurement, displaySettings: measurementDisplaySettings(measurement, deviceIdValue) };
+  const displayName = measurementDisplayName(displayMeasurement);
+  card.innerHTML = `<div class="measurement-card-top"><div><h3>${escapeHtml(displayName)}</h3><small class="measurement-card-meta">${escapeHtml(measurement.value)} · ${escapeHtml(measurement.typeLabel || measurement.type)}</small></div><button class="measurement-card-remove" type="button" data-measurement-remove aria-label="${escapeHtml(displayName)} abwählen" title="Messwert abwählen">×</button></div><div class="measurement-card-value">${valueMarkup(measurement, result, deviceIdValue)}</div><div class="measurement-card-controls"><button class="button button-quiet" type="button" data-measurement-settings>Einstellungen</button><label><input type="checkbox" data-measurement-mqtt${mqttActive ? ' checked' : ''}> MQTT aktiv</label></div>`;
   if (historical && onHistoryDetails) {
     const detailsButton = document.createElement('button');
     detailsButton.className = 'measurement-history-info-button';
     detailsButton.type = 'button';
     detailsButton.dataset.measurementHistoryInfo = 'true';
     detailsButton.textContent = 'i';
-    detailsButton.setAttribute('aria-label', `Historische Zeitbereiche für ${measurementDisplayName(measurement)} anzeigen`);
+    detailsButton.setAttribute('aria-label', `Historische Zeitbereiche für ${displayName} anzeigen`);
     detailsButton.title = 'Alle historischen Zeitbereiche anzeigen';
     detailsButton.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -4416,7 +4423,8 @@ async function removeQuickInfoMeasurement(device, measurement) {
 function openMeasurementSettings(measurement, device = selectedDevice()) {
   state.editingMeasurement = measurement;
   state.editingMeasurementDevice = device;
-  setText('#measurement-settings-name', measurementDisplayName(measurement));
+  const display = measurementDisplaySettings(measurement, deviceId(device));
+  setText('#measurement-settings-name', measurementDisplayName({ ...measurement, displaySettings: display }));
   setText('#measurement-settings-detail', `${measurement.value} · ${measurement.typeLabel || measurement.type}`);
   const assigned = measurementProfileIds(measurement);
   const profileSelect = $('#measurement-settings-profile');
@@ -4424,7 +4432,6 @@ function openMeasurementSettings(measurement, device = selectedDevice()) {
   profileSelect.value = assigned[0] || defaultMqttProfileId();
   $('#measurement-settings-retain').checked = measurementRetainStateForDevice(measurement, device);
   updateMeasurementSettingsTopic();
-  const display = measurementDisplaySettings(measurement, deviceId(device));
   const unitSelect = $('#measurement-settings-unit');
   const units = measurementDisplayUnits(measurement);
   unitSelect.replaceChildren(
@@ -4440,6 +4447,8 @@ function openMeasurementSettings(measurement, device = selectedDevice()) {
     ...Array.from({ length: 7 }, (_, count) => new Option(String(count), String(count)))
   );
   decimalsSelect.value = display.decimals === undefined ? '' : String(display.decimals);
+  const nameInput = $('#measurement-settings-display-name');
+  if (nameInput) nameInput.value = display.name || '';
   updateMeasurementDisplayPreview();
   updateMeasurementSettingsDiscovery();
   const project = $('#project-select')?.value || '';
@@ -4686,7 +4695,9 @@ async function updateMeasurementSettingsDiscovery() {
 
 function measurementDisplaySettingsInput() {
   const decimals = $('#measurement-settings-decimals').value;
+  const name = $('#measurement-settings-display-name')?.value.trim() || '';
   return {
+    ...(name ? { name } : {}),
     unit: $('#measurement-settings-unit').value,
     ...(decimals === '' ? {} : { decimals: Number(decimals) })
   };
@@ -4779,7 +4790,10 @@ function openHistoryDetails(measurement, deviceIdValue, resultStore = null) {
   const settings = historicalSettingsForTarget(measurement, { project, deviceId: deviceIdValue });
   const ranges = settings.ranges.length ? settings.ranges : DEFAULT_HISTORY_RANGES;
   const store = historicalResultStoreForDevice(deviceIdValue, resultStore);
-  setText('#history-details-name', measurementDisplayName(measurement));
+  setText('#history-details-name', measurementDisplayName({
+    ...measurement,
+    displaySettings: measurementDisplaySettings(measurement, deviceIdValue)
+  }));
   setText('#history-details-subtitle', `${measurement.value} · ${measurement.typeLabel || measurement.type}`);
   setText('#history-details-intro', `${ranges.length} ausgewählte Zeitbereiche · Werte aus dem Backend-Cache`);
   list.replaceChildren(...ranges.map((range) => {
@@ -7574,6 +7588,7 @@ function attachEvents() {
     updateMeasurementSettingsDiscovery();
   });
   $('#measurement-settings-unit')?.addEventListener('change', updateMeasurementDisplayPreview);
+  $('#measurement-settings-display-name')?.addEventListener('input', updateMeasurementSettingsDiscovery);
   $('#measurement-settings-history-range-mode')?.addEventListener('change', () => {
     updateMeasurementHistoryRangeMode();
     updateMeasurementSettingsTopic();

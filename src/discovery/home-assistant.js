@@ -151,6 +151,12 @@ export function normalizeMeasurement(measurement = {}) {
   const displaySettings = measurement.displaySettings && typeof measurement.displaySettings === 'object'
     ? measurement.displaySettings
     : {};
+  const normalizedDisplaySettings = {};
+  const customName = typeof displaySettings.name === 'string' ? displaySettings.name.trim().slice(0, 120) : '';
+  if (customName) normalizedDisplaySettings.name = customName;
+  if (Number.isInteger(displaySettings.decimals) && displaySettings.decimals >= 0 && displaySettings.decimals <= 6) {
+    normalizedDisplaySettings.decimals = displaySettings.decimals;
+  }
   return {
     id: String(firstValue(measurement.id, value, `${value}-${type}`)),
     value: String(value),
@@ -162,9 +168,7 @@ export function normalizeMeasurement(measurement = {}) {
     historical: measurement.historical === true || Boolean(measurement.historyRange) || historyRanges.length > 0,
     historyRange: measurement.historyRange || null,
     historyRanges,
-    displaySettings: Number.isInteger(displaySettings.decimals) && displaySettings.decimals >= 0 && displaySettings.decimals <= 6
-      ? { decimals: displaySettings.decimals }
-      : {}
+    displaySettings: normalizedDisplaySettings
   };
 }
 
