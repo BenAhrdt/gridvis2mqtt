@@ -30,6 +30,7 @@ const state = {
   deviceSort: 'name',
   gridvisOnline: false,
   gridvisConnection: 'unknown',
+  runtime: null,
   deviceCache: {},
   mqttDeviceCounts: {},
   mqttDeviceSummaries: {},
@@ -666,10 +667,51 @@ function updateTopbarMqttStatus() {
   setText('#topbar-mqtt-status-text', label);
 }
 
+function formatRuntimeBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return '–';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let amount = bytes;
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024;
+    unit += 1;
+  }
+  return `${amount.toLocaleString('de-DE', { maximumFractionDigits: unit ? 1 : 0 })} ${units[unit]}`;
+}
+
+function formatRuntimeDuration(value) {
+  const seconds = Math.max(0, Math.floor(Number(value) || 0));
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = seconds % 60;
+  if (days) return `${days} T ${hours} Std.`;
+  if (hours) return `${hours} Std. ${minutes} Min.`;
+  if (minutes) return `${minutes} Min. ${rest} Sek.`;
+  return `${rest} Sek.`;
+}
+
+function renderRuntimeMetrics(runtime = state.runtime) {
+  if (!runtime || typeof runtime !== 'object') return;
+  const cpu = Number.isFinite(Number(runtime.cpuPercent)) ? `${Number(runtime.cpuPercent).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %` : '–';
+  const memory = formatRuntimeBytes(runtime.rssBytes);
+  setText('#runtime-cpu', cpu);
+  setText('#runtime-memory', memory);
+  setText('#topbar-runtime-cpu', cpu);
+  setText('#topbar-runtime-memory', memory);
+  setText('#runtime-heap', `${formatRuntimeBytes(runtime.heapUsedBytes)} / ${formatRuntimeBytes(runtime.heapTotalBytes)}`);
+  setText('#runtime-external', formatRuntimeBytes(runtime.externalBytes));
+  setText('#runtime-uptime', formatRuntimeDuration(runtime.uptimeSeconds));
+  setText('#runtime-updated', runtime.sampledAt ? `Gemessen ${logbookTime(runtime.sampledAt)}` : 'Gerade gemessen');
+}
+
 async function refreshConnectionStatus() {
   const result = await api('/api/status');
   if (state.config?.gridvis) state.config.gridvis.connection = result.gridvis || {};
   if (state.config?.mqtt) state.config.mqtt.connection = result.mqtt || {};
+  state.runtime = result.runtime || null;
+  renderRuntimeMetrics();
   updateTopbarGridvisStatus(result.gridvis || {});
   updateTopbarMqttStatus();
 }
@@ -5863,6 +5905,7 @@ async function loadInitial() {
   updateMqttState();
   updateTopbarGridvisStatus();
   configureConnectionStatusRefresh();
+  refreshConnectionStatus().catch((error) => console.warn('Laufzeitstatus konnte nicht initial geladen werden:', error.message));
   configureMqttOverviewRefresh();
   configureLiveRefresh();
   if ($('#device-sort')) $('#device-sort').value = state.deviceSort;

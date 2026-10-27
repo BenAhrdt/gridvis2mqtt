@@ -67,11 +67,36 @@ const liveValueCache = new Map();
 const historicalValueCache = new Map();
 let updateProcess = null;
 
+let previousCpuUsage = process.cpuUsage();
+let previousCpuAt = process.hrtime.bigint();
+
 // All state-changing requests must commit in arrival order. Several of the
 // GridVis requests are deliberately asynchronous; without this queue an old
 // /api/state snapshot could finish after a newer checkbox change and restore
 // a Discovery entry that the user had just disabled.
 let stateMutationQueue = Promise.resolve();
+
+function runtimeSnapshot() {
+  const now = process.hrtime.bigint();
+  const cpuUsage = process.cpuUsage();
+  const elapsedMicros = Number(now - previousCpuAt) / 1000;
+  const usedMicros = (cpuUsage.user - previousCpuUsage.user) + (cpuUsage.system - previousCpuUsage.system);
+  const cpuPercent = elapsedMicros > 0 ? Math.max(0, (usedMicros / elapsedMicros) * 100) : 0;
+  const memory = process.memoryUsage();
+
+  previousCpuUsage = cpuUsage;
+  previousCpuAt = now;
+
+  return {
+    cpuPercent: Number(cpuPercent.toFixed(1)),
+    rssBytes: memory.rss,
+    heapUsedBytes: memory.heapUsed,
+    heapTotalBytes: memory.heapTotal,
+    externalBytes: memory.external,
+    uptimeSeconds: Math.floor(process.uptime()),
+    sampledAt: new Date().toISOString()
+  };
+}
 
 function enqueueStateMutation(callback) {
   const result = stateMutationQueue.then(callback, callback);
@@ -3027,7 +3052,8 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, {
       ok: true,
       gridvis: gridvis.getSnapshot(),
-      mqtt: mqtt.getSnapshot()
+      mqtt: mqtt.getSnapshot(),
+      runtime: runtimeSnapshot()
     });
   }
 

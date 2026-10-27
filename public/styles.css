@@ -2101,6 +2101,44 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .overview-grid {
   grid-template-columns: 1fr;
 }
+.runtime-panel {
+  margin-top: 18px;
+  padding: 23px;
+}
+.runtime-panel .panel-heading {
+  align-items: flex-end;
+}
+.runtime-panel .toolbar-status {
+  padding-bottom: 0;
+  white-space: nowrap;
+}
+.runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.runtime-metric {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-soft);
+}
+.runtime-metric span,
+.runtime-metric small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.runtime-metric strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .stat-icon svg {
   width: 28px;
   height: 28px;
@@ -2121,6 +2159,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .application-settings-panel .settings-form { max-width: none; }
 .application-settings-panel { margin-bottom: 24px; }
 @media (max-width: 760px) { .logbook-toolbar, .logbook-actions { display: grid; align-items: stretch; }.logbook-actions .search-field { width: 100%; }.logbook-entry { grid-template-columns: 1fr auto; }.logbook-event { grid-column: 1 / -1; }.logbook-time { font-size: 10px; } }
+
+@media (max-width: 900px) {
+  .runtime-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .runtime-panel { padding: 17px; }
+  .runtime-panel .panel-heading { display: block; }
+  .runtime-panel .toolbar-status { margin-top: 10px; }
+  .runtime-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 420px) {
+  .runtime-grid { grid-template-columns: 1fr; }
+}
 
 /* Helle Janitza-inspirierte Arbeitsoberfläche. Der schwarze App-Rahmen bleibt
    bewusst erhalten; die Inhalte verwenden eine einheitliche helle Farbwelt. */
@@ -3659,9 +3710,11 @@ tbody tr:hover {
 /* Navigation refinements: keep the application identity visible and expose
    administration as a compact flyout beside the main menu. */
 .topbar-brand {
-  width: 174px;
-  flex: 0 0 174px;
+  width: auto;
+  flex: 0 0 auto;
   display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .topbar-brand .brand {
@@ -3682,6 +3735,34 @@ tbody tr:hover {
 .topbar-brand .brand-copy small {
   color: #9ba8ac;
   font-size: 9px;
+}
+.topbar-runtime {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding-right: 14px;
+  border-right: 1px solid #33434a;
+}
+.topbar-runtime-item {
+  display: grid;
+  gap: 2px;
+  min-width: 50px;
+  color: #8fa0a5;
+  font-size: 9px;
+  line-height: 1.1;
+  text-align: right;
+}
+.topbar-runtime-item strong {
+  color: #f3f7f7;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.topbar-runtime-divider {
+  width: 1px;
+  height: 22px;
+  background: #33434a;
 }
 
 .sidebar {
@@ -3783,6 +3864,10 @@ tbody tr:hover {
   .topbar-brand {
     width: auto;
     flex-basis: auto;
+  }
+
+  .topbar-runtime {
+    display: none;
   }
 
   .topbar-brand .brand-copy {

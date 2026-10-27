@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.6] - 2026-10-27
+
+- Die Übersicht zeigt jetzt die Laufzeitressourcen des Node-Prozesses: Prozess-CPU, residenten RAM (RSS), V8-Heap, externen Speicher und Laufzeit.
+- CPU und RAM werden zusätzlich kompakt neben dem GridVis2MQTT-Logo in der Kopfzeile angezeigt und auf kleinen Bildschirmen ausgeblendet.
+- Der bestehende `/api/status`-Endpunkt liefert die Laufzeitwerte ohne zusätzliche aggressive Browser-Abfrage.
+
 ## [0.4.5] - 2026-10-14
 
 - Die MQTT-Übersicht aktualisiert Livewerte jetzt automatisch im angezeigten 2-Sekunden-Zyklus.

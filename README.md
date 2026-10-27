@@ -11,6 +11,8 @@ GridVis2MQTT liest Projekte, Geräte, Live-Werte und historische Messwerte aus d
 
 Der erste Profil-Renderer ist `Home Assistant`. Die Anwendung bleibt intern GridVis- und Plattform-neutral; Discovery-Nachrichten werden nur als Ausgabeformat erzeugt. Discovery kann deaktiviert werden und der Prefix ist frei wählbar, zum Beispiel `homeassistant` oder `gridvis/discovery`. Ein eingegebenes `/#` wird als Namespace-Schreibweise akzeptiert und beim Veröffentlichen entfernt, weil MQTT-Wildcards nur beim Abonnieren, nicht beim Publizieren erlaubt sind.
 
+Die Übersicht zeigt die aktuelle Laufzeitnutzung der Anwendung. Angezeigt werden Prozess-CPU, residenter RAM (RSS), V8-Heap, externer Speicher und die Laufzeit seit dem letzten Start. CPU und RAM werden zusätzlich kompakt in der Kopfzeile neben dem GridVis2MQTT-Logo gespiegelt; die Werte stammen direkt aus dem Node-Prozess und werden über den bestehenden Verbindungsstatus-Zyklus aktualisiert.
+
 Verwendete REST-Ressourcen:
 
 - `/rest/1/projects`

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#050708">
     <title>GridVis2MQTT</title>
     <link rel="icon" href="/branding/gridvis2mqtt.png" type="image/png">
-    <link rel="stylesheet" href="/styles.css?v=0.4.3-1">
+    <link rel="stylesheet" href="/styles.css?v=0.4.6-1">
   </head>
   <body>
     <section class="auth-screen" id="login-screen" hidden>
@@ -42,6 +42,11 @@
     <div class="app-shell" id="app-shell" hidden>
       <header class="topbar">
         <div class="topbar-brand">
+          <div class="topbar-runtime" title="Aktuelle Laufzeitressourcen der Anwendung" aria-label="Anwendungsressourcen">
+            <span class="topbar-runtime-item"><span>CPU</span><strong id="topbar-runtime-cpu">–</strong></span>
+            <span class="topbar-runtime-divider" aria-hidden="true"></span>
+            <span class="topbar-runtime-item"><span>RAM</span><strong id="topbar-runtime-memory">–</strong></span>
+          </div>
           <a class="brand" href="#overview" data-view-link="overview" aria-label="GridVis2MQTT Startseite">
             <img class="brand-mark-image" src="/branding/gridvis2mqtt_white.png" alt="">
             <span class="brand-copy"><strong>GridVis2MQTT</strong><small>Energy bridge</small></span>
@@ -210,6 +215,17 @@
               </article>
             </div>
 
+            <article class="content-panel runtime-panel">
+              <div class="panel-heading"><div><p class="overline">Anwendung</p><h2>Laufzeit und Ressourcen</h2><p class="panel-copy">Aktuelle Nutzung dieses GridVis2MQTT-Prozesses. CPU wird als Prozessanteil eines logischen CPU-Kerns gemessen.</p></div><span class="toolbar-status" id="runtime-updated">Noch nicht gemessen</span></div>
+              <div class="runtime-grid">
+                <div class="runtime-metric"><span>Prozess-CPU</span><strong id="runtime-cpu">–</strong><small>letztes Messintervall</small></div>
+                <div class="runtime-metric"><span>RAM (RSS)</span><strong id="runtime-memory">–</strong><small>residenter Speicher</small></div>
+                <div class="runtime-metric"><span>V8-Heap</span><strong id="runtime-heap">–</strong><small>belegt / reserviert</small></div>
+                <div class="runtime-metric"><span>Externer Speicher</span><strong id="runtime-external">–</strong><small>z. B. native Module</small></div>
+                <div class="runtime-metric"><span>Laufzeit</span><strong id="runtime-uptime">–</strong><small>seit dem letzten Start</small></div>
+              </div>
+            </article>
+
             <article class="content-panel overview-note"><div class="note-symbol">i</div><div><strong>Lesender Betrieb</strong><p>GridVis2MQTT liest Daten aus GridVis und veröffentlicht sie über MQTT. Schreib- und Command-Topics sind bewusst noch nicht aktiviert.</p></div><span class="read-only-badge">read only</span></article>
           </section>
 
@@ -310,6 +326,6 @@
         </main>
       </div>
     </div>
-    <script src="/app.js?v=0.4.3-1" type="module"></script>
+    <script src="/app.js?v=0.4.6-1" type="module"></script>
   </body>
 </html>
