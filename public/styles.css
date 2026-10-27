@@ -1084,6 +1084,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   justify-content: space-between;
   gap: 18px;
 }
+.device-info-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
 .device-info-heading {
   min-width: 0;
   align-items: center;

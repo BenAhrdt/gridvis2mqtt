@@ -26,7 +26,7 @@ function buildDeviceInfo(device, deviceId) {
   const modelId = firstValue(device?.modelId, device?.model_id, device?.type, info.modelId, info.model_id, info.type);
   const deviceInfo = {
     identifiers: [`gridvis2mqtt_${deviceId}`],
-    name: firstValue(device?.name, device?.serialNr, `GridVis ${deviceId}`),
+    name: firstValue(device?.displayName, device?.name, device?.serialNr, `GridVis ${deviceId}`),
     manufacturer: firstValue(device?.manufacturer, info.manufacturer, 'Janitza'),
     model: firstValue(device?.model, device?.typeDisplayName, info.model, modelId, 'GridVis-Messgerät'),
     model_id: modelId,

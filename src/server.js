@@ -276,11 +276,18 @@ function stateItemId(item) {
 
 function replaceDeviceDetail(base = {}, detail = {}) {
   const detailInfo = detail.info && typeof detail.info === 'object' && !Array.isArray(detail.info) ? detail.info : {};
-  return {
+  const merged = {
     ...base,
     ...detail,
     info: { ...detailInfo }
   };
+  const hasExplicitDisplayName = Object.prototype.hasOwnProperty.call(detail, 'displayName');
+  const displayName = typeof (hasExplicitDisplayName ? detail.displayName : base.displayName) === 'string'
+    ? (hasExplicitDisplayName ? detail.displayName : base.displayName).trim().slice(0, 120)
+    : '';
+  if (displayName) merged.displayName = displayName;
+  else delete merged.displayName;
+  return merged;
 }
 
 function hasDeviceDetails(device = {}) {
@@ -530,10 +537,13 @@ function persistDeviceList(project, devices) {
   const previousById = new Map(previousDevices.map((device) => [stateItemId(device), device]));
   nextState.deviceCache[project] = entries.map((device) => {
     const previous = previousById.get(stateItemId(device));
-    if (!previous?.info) return structuredClone(device);
+    const displayName = typeof previous?.displayName === 'string' ? previous.displayName.trim().slice(0, 120) : '';
+    if (!previous?.info) return displayName ? { ...structuredClone(device), displayName } : structuredClone(device);
     // Keep cached connection details, but let the fresh device list win for
     // user-facing fields such as the configured name.
     const merged = structuredClone(device);
+    if (displayName) merged.displayName = displayName;
+    else delete merged.displayName;
     merged.info = { ...structuredClone(previous.info), ...(device.info || {}) };
     return merged;
   });
@@ -966,7 +976,8 @@ function mqttOverviewMeasurementName(measurement = {}) {
 
 function mqttOverviewDeviceName(device = {}, fallback = '') {
   return String(
-    device.name
+    device.displayName
+      || device.name
       || device.label
       || device.title
       || device.serialNr

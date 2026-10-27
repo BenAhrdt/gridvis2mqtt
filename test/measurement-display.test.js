@@ -164,6 +164,7 @@ test('does not classify an online measurement as historical when the key also ex
   });
   const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   runInContext(app.replace(/^import .*;\n/, '').replace(/attachEvents\(\);\s*loadInitial\(\)\.catch\(showError\);\s*$/, ''), context);
+  assert.equal(runInContext("deviceName({ id: '26', name: 'GridVis-Gerät', displayName: 'Hausverbrauch' })", context), 'Hausverbrauch');
   assert.equal(runInContext("isHistoricalMeasurement({ value: 'ActiveEnergyConsumed', type: 'SUM13', online: true, historical: false })", context), false);
   assert.equal(runInContext("isHistoricalMeasurement({ value: 'ActiveEnergyConsumed', type: 'SUM13', online: false, historical: true, timebases: [900] })", context), true);
 });

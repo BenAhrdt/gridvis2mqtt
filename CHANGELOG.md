@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.9] - 2026-10-27
+
+- Geräte können pro Projekt optional mit einem eigenen Anzeigenamen versehen werden.
+- Eigene Gerätenamen werden in der Geräteübersicht, den Gerätedetails und der MQTT-/Home-Assistant-Discovery verwendet; Geräte-IDs, Topics und `unique_id` bleiben stabil.
+- Der eigene Gerätename wird im Backend-Gerätezustand gespeichert und bleibt bei GridVis-Refreshes sowie Neustarts erhalten. Ein leeres Feld stellt den GridVis-Namen wieder her.
+
 ## [0.4.8] - 2026-10-27
 
 - Messwerte können pro Projekt, Gerät und Messwert optional mit einem eigenen Anzeigenamen versehen werden.

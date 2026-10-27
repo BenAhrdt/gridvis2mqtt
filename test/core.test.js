@@ -296,6 +296,17 @@ test('maps GridVis device detail information into HA metadata and diagnostics', 
     applicationUrl: 'http://gridvis2mqtt:8080/'
   }).find((message) => message.objectId.startsWith('device_info_icon_url_'));
   assert.equal(absoluteIconUrl.stateValue, 'http://gridvis2mqtt:8080/api/gridvis/projects/EnergieMonitoring/deviceicon/27');
+
+  const customDevice = { ...device, displayName: 'Hausverbrauch' };
+  const customSensor = buildHomeAssistantDiscovery({
+    project: 'EnergieMonitoring',
+    device: customDevice,
+    measurement: { value: 'PowerActive', type: 'Overall', name: 'Wirkleistung', unit: 'W' }
+  });
+  const customInfos = buildDeviceInfoDiscoveries({ project: 'EnergieMonitoring', device: customDevice });
+  assert.equal(customSensor.payload.device.name, 'Hausverbrauch');
+  assert.equal(customInfos[0].payload.device.name, 'Hausverbrauch');
+  assert.equal(customSensor.payload.device.identifiers[0], sensor.payload.device.identifiers[0]);
 });
 
 test('keeps measurement discovery stable when firmware or hardware changes', () => {

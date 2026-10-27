@@ -76,6 +76,7 @@ const state = {
   mqttDefaultsVersion: CURRENT_DEFAULTS_VERSION,
   editingMeasurement: null,
   editingMeasurementDevice: null,
+  editingDevice: null,
   infoDevice: null,
   liveDragMeasurementKey: '',
   historicalDragMeasurementKey: '',
@@ -2864,8 +2865,16 @@ function deviceId(device) {
   return String(itemValue(device, 'id', 'deviceId', 'serialNr', 'serialNumber', 'name'));
 }
 
-function deviceName(device) {
+function normalizeDeviceDisplayName(value) {
+  return typeof value === 'string' ? value.trim().slice(0, 120) : '';
+}
+
+function deviceSourceName(device) {
   return String(itemValue(device, 'name', 'label', 'title', 'serialNr', 'serialNumber', 'id') || 'Unbenanntes Gerät');
+}
+
+function deviceName(device) {
+  return String(itemValue(device, 'displayName', 'name', 'label', 'title', 'serialNr', 'serialNumber', 'id') || 'Unbenanntes Gerät');
 }
 
 function deviceLeafName(device) {
@@ -2903,6 +2912,7 @@ async function loadDeviceDetails(device, { refresh = false, selectionToken = nul
     const merged = {
       ...device,
       ...detail,
+      ...(normalizeDeviceDisplayName(device?.displayName) ? { displayName: normalizeDeviceDisplayName(device.displayName) } : {}),
       info: { ...baseInfo, ...detailInfo }
     };
     const index = state.devices.findIndex((entry) => deviceId(entry) === id);
@@ -3447,6 +3457,79 @@ async function openDeviceInfo(device) {
       renderDeviceInfoValues(updated);
     }
   }).catch(reportBackgroundError);
+}
+
+function replaceLocalDevice(updated, project) {
+  const id = deviceId(updated);
+  const index = state.devices.findIndex((entry) => deviceId(entry) === id);
+  if (index >= 0) state.devices[index] = updated;
+  state.deviceCache[project] = state.devices;
+  if (state.currentDevice && deviceId(state.currentDevice) === id) state.currentDevice = updated;
+  if (state.infoDevice && deviceId(state.infoDevice) === id) state.infoDevice = updated;
+  renderDeviceSelect(deviceId(state.currentDevice || {}));
+  renderDeviceList();
+  if (state.currentView === 'device-detail' && state.currentDevice && deviceId(state.currentDevice) === id) renderDeviceInfo(state.currentDevice);
+  if ($('#device-info-dialog')?.open && state.infoDevice && deviceId(state.infoDevice) === id) {
+    setText('#device-info-name', deviceLeafName(state.infoDevice));
+    setText('#device-info-subtitle', deviceType(state.infoDevice));
+    renderDeviceInfoValues(state.infoDevice);
+  }
+  return updated;
+}
+
+async function persistBackendDeviceName(project, id, device) {
+  const result = await api('/api/state/device', {
+    method: 'PUT',
+    body: JSON.stringify({
+      project,
+      deviceId: String(id),
+      loaded: true,
+      device: { ...device, displayName: normalizeDeviceDisplayName(device.displayName) }
+    })
+  });
+  if (result.state?.mqttDeviceCounts && typeof result.state.mqttDeviceCounts === 'object') state.mqttDeviceCounts = result.state.mqttDeviceCounts;
+  if (result.state?.mqttDeviceSummaries && typeof result.state.mqttDeviceSummaries === 'object') state.mqttDeviceSummaries = result.state.mqttDeviceSummaries;
+  if (Number.isFinite(Number(result.state?.discoveryPreparedCount))) state.discoveryPreparedCount = Number(result.state.discoveryPreparedCount);
+  updateSelectedCounters();
+  return result;
+}
+
+function openDeviceSettings(device = state.currentDevice || state.infoDevice) {
+  const dialog = $('#device-settings-dialog');
+  if (!dialog || !device) return;
+  state.editingDevice = device;
+  setText('#device-settings-name', deviceName(device));
+  setText('#device-settings-detail', `GridVis-Name: ${deviceSourceName(device)}`);
+  const input = $('#device-settings-display-name');
+  if (input) input.value = normalizeDeviceDisplayName(device.displayName);
+  if (!dialog.open) {
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  }
+  input?.focus();
+  input?.select();
+}
+
+async function saveDeviceSettings(event) {
+  event.preventDefault();
+  const device = state.editingDevice;
+  if (!device) return;
+  const project = $('#project-select')?.value || '';
+  const id = deviceId(device);
+  const displayName = normalizeDeviceDisplayName($('#device-settings-display-name')?.value || '');
+  const previous = { ...device };
+  const updated = { ...device };
+  if (displayName) updated.displayName = displayName;
+  else delete updated.displayName;
+  replaceLocalDevice(updated, project);
+  $('#device-settings-dialog')?.close();
+  try {
+    await persistBackendDeviceName(project, id, updated);
+    showToast('Gerätename übernommen.', 'success');
+  } catch (error) {
+    replaceLocalDevice(previous, project);
+    throw error;
+  }
 }
 
 async function openQuickInfoMeasurementSettings(device, measurement) {
@@ -7735,6 +7818,10 @@ function attachEvents() {
   $('#device-info-close')?.addEventListener('click', () => {
     closeDeviceInfoDialog();
   });
+  $('#device-info-settings')?.addEventListener('click', () => openDeviceSettings(state.infoDevice));
+  $('#device-detail-settings')?.addEventListener('click', () => openDeviceSettings(state.currentDevice));
+  $('#device-settings-close')?.addEventListener('click', () => $('#device-settings-dialog')?.close());
+  $('#device-settings-form')?.addEventListener('submit', (event) => saveDeviceSettings(event).catch(showError));
   $('#history-details-close')?.addEventListener('click', () => $('#history-details-dialog')?.close());
 }
 
