@@ -2509,9 +2509,8 @@ function configureLiveRefresh() {
   state.liveRefreshTimer = null;
   clearInterval(state.liveCacheRefreshTimer);
   state.liveCacheRefreshTimer = null;
+  syncLiveRefreshControl();
   if (!state.config?.gridvis?.configured || !hasDeviceDataFocus()) return;
-  const interval = Number($('#live-refresh-interval')?.value || state.liveRefreshInterval || 0);
-  state.liveRefreshInterval = [0, 1, 2, 5, 10, 30, 60, 300].includes(interval) ? interval : 0;
   const targets = liveTargetsForCurrentFocus();
   const tick = Math.min(...targets.map((target) => target.refreshInterval).filter((value) => value > 0));
   if (Number.isFinite(tick)) {
@@ -4088,9 +4087,28 @@ function isRefreshInterval(value) {
   return [1, 2, 5, 10, 30, 60, 300].includes(Number(value));
 }
 
+function isConfiguredLiveRefreshInterval(value) {
+  return [0, 1, 2, 5, 10, 30, 60, 300].includes(Number(value));
+}
+
+function hasDeviceRefreshInterval(project, id) {
+  const key = cacheKey(project, id);
+  return Object.prototype.hasOwnProperty.call(state.deviceRefreshIntervals, key)
+    && isConfiguredLiveRefreshInterval(state.deviceRefreshIntervals[key]);
+}
+
 function deviceRefreshInterval(project, id) {
-  const override = Number(state.deviceRefreshIntervals[cacheKey(project, id)] || 0);
-  return isRefreshInterval(override) ? override : state.liveRefreshInterval;
+  const key = cacheKey(project, id);
+  if (hasDeviceRefreshInterval(project, id)) return Number(state.deviceRefreshIntervals[key]);
+  return state.liveRefreshInterval;
+}
+
+function syncLiveRefreshControl() {
+  const control = $('#live-refresh-interval');
+  if (!control) return;
+  const project = $('#project-select')?.value || '';
+  const id = deviceId(state.currentDevice || {}) || $('#device-select')?.value || '';
+  control.value = String(project && id ? deviceRefreshInterval(project, id) : state.liveRefreshInterval);
 }
 
 function liveTargetForDevice(project, id, { includeDisplay = false, includeAvailable = false } = {}) {
@@ -7596,7 +7614,12 @@ function attachEvents() {
     targets: liveTargetsForCurrentFocus()
   }).catch(showError));
   $('#live-refresh-interval')?.addEventListener('change', () => {
-    state.liveRefreshInterval = Number($('#live-refresh-interval').value) || 0;
+    const project = $('#project-select')?.value || '';
+    const id = deviceId(state.currentDevice || {}) || $('#device-select')?.value || '';
+    const interval = Number($('#live-refresh-interval').value);
+    if (project && id && isConfiguredLiveRefreshInterval(interval)) {
+      state.deviceRefreshIntervals[cacheKey(project, id)] = interval;
+    }
     configureLiveRefresh();
     writeUiCache();
   });

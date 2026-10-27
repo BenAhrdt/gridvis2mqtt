@@ -48,7 +48,7 @@ const MQTT_STATE_DELAY_MS = 5000;
 const INFORMATION_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const INFORMATION_REFRESH_CONCURRENCY = 1;
 const HISTORICAL_REFRESH_CONCURRENCY = 1;
-const LIVE_REFRESH_INTERVALS = new Set([1, 2, 5, 10, 30, 60, 300]);
+const LIVE_REFRESH_INTERVALS = new Set([0, 1, 2, 5, 10, 30, 60, 300]);
 
 let cachedGridvisVersion = '';
 let cachedGridvisInfo = {};
@@ -1096,7 +1096,9 @@ function mqttOverviewRows(snapshot = {}, project = '') {
           updatedAt,
           cycle: historical
             ? normalizedHistoryInterval(configuredSettings.interval, normalizedHistoryInterval(deviceHistoryDefaults.refreshInterval, normalizedHistoryInterval(snapshot.historicalGlobalSettings?.refreshInterval)))
-            : (Number(snapshot.deviceRefreshIntervals?.[cacheKey]) || Number(snapshot.liveRefreshInterval) || 0),
+            : (Object.prototype.hasOwnProperty.call(snapshot.deviceRefreshIntervals || {}, cacheKey)
+              ? Number(snapshot.deviceRefreshIntervals[cacheKey]) || 0
+              : Number(snapshot.liveRefreshInterval) || 0),
           ranges,
           retain: historical
             ? historicalStateRetainEnabled(cache, measurementKey)
@@ -1226,7 +1228,8 @@ function activeLiveJobsFromState(snapshot = {}, brokerId = '') {
           && (!brokerId || (profile.brokerId || 'default') === brokerId);
       });
       if (!profileIds.length) continue;
-      const deviceRefreshInterval = Number(deviceRefreshIntervals[cacheKey]) || 0;
+      const hasDeviceRefreshInterval = Object.prototype.hasOwnProperty.call(deviceRefreshIntervals, cacheKey);
+      const deviceRefreshInterval = Number(deviceRefreshIntervals[cacheKey]);
       const displaySettings = cache.displaySettings?.[measurementKey] || measurement.displaySettings;
       jobs.push({
         project,
@@ -1235,7 +1238,7 @@ function activeLiveJobsFromState(snapshot = {}, brokerId = '') {
         measurement: { ...measurement, ...(displaySettings ? { displaySettings } : {}) },
         profileIds,
         retainState: cache.mqttRetainAssignments?.[measurementKey] === true,
-        refreshInterval: LIVE_REFRESH_INTERVALS.has(deviceRefreshInterval)
+        refreshInterval: hasDeviceRefreshInterval && LIVE_REFRESH_INTERVALS.has(deviceRefreshInterval)
           ? deviceRefreshInterval
           : (LIVE_REFRESH_INTERVALS.has(defaultRefreshInterval) ? defaultRefreshInterval : 0),
         key: `${cacheKey}::${measurementKey}`

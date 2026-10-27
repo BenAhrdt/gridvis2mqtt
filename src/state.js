@@ -19,6 +19,12 @@ function objectOrEmpty(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function normalizeDeviceRefreshIntervals(value) {
+  return Object.fromEntries(Object.entries(objectOrEmpty(value))
+    .map(([key, interval]) => [key, Number(interval)])
+    .filter(([, interval]) => REFRESH_INTERVALS.includes(interval)));
+}
+
 function normalizeHistoryComparisons(value, legacyOffset = 0) {
   const source = Array.isArray(value)
     ? value
@@ -83,7 +89,7 @@ function normalizeState(value = {}) {
     liveRefreshInterval: REFRESH_INTERVALS.includes(Number(source.liveRefreshInterval))
       ? Number(source.liveRefreshInterval)
       : DEFAULT_LIVE_REFRESH_INTERVAL,
-    deviceRefreshIntervals: objectOrEmpty(source.deviceRefreshIntervals),
+    deviceRefreshIntervals: normalizeDeviceRefreshIntervals(source.deviceRefreshIntervals),
     historicalGlobalSettings: {
       refreshInterval: HISTORY_REFRESH_INTERVALS.includes(Number(source.historicalGlobalSettings?.refreshInterval))
         ? Number(source.historicalGlobalSettings.refreshInterval)

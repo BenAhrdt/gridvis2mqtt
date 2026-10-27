@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.10] - 2026-10-27
+
+- Der Geräte-Standardzyklus für Live-Werte wird jetzt pro Projekt und Gerät gespeichert, statt beim Ändern alle Geräte zu beeinflussen.
+- Geräte ohne eigenen Zyklus verwenden weiterhin den globalen Fallback; beim Gerätewechsel wird der jeweils konfigurierte Zyklus wieder angezeigt.
+- Der Backend-Live-Scheduler, die MQTT-Übersicht und die Zustandsnormalisierung berücksichtigen diese gerätespezifische Einstellung einschließlich „Manuell“.
+
 ## [0.4.9] - 2026-10-27
 
 - Geräte können pro Projekt optional mit einem eigenen Anzeigenamen versehen werden.
