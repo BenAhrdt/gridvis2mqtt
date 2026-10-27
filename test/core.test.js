@@ -531,6 +531,32 @@ test('retains an optional state value and removes it when disabled', async () =>
   assert.equal(valueMessage.options.retain, true);
 });
 
+test('clears a retained state value when the historical source becomes empty', async () => {
+  const published = [];
+  const publisher = new MqttPublisher();
+  publisher.clients.set('broker-1', { connected: true });
+  publisher.client = publisher.clients.get('broker-1');
+  publisher.publish = async (topic, payload, options, brokerId) => {
+    published.push({ topic, payload, options, brokerId });
+  };
+
+  const message = {
+    brokerId: 'broker-1', profileId: 'homeassistant', uniqueId: 'entity-empty-history',
+    configTopic: 'homeassistant/sensor/entity-empty-history/config',
+    availabilityTopic: 'gridvis/entity-empty-history/availability',
+    stateTopic: 'gridvis/entity-empty-history/state', payload: { name: 'Heute' }, stateRetain: true
+  };
+
+  await publisher.publishDiscovery([message]);
+  await publisher.publishValues([{ ...message, stateValue: 12.5 }]);
+  const cleared = await publisher.clearRetainedValues([{ ...message, stateRetain: true }]);
+
+  assert.equal(cleared, 1);
+  const clearedState = published.find((entry) => entry.topic === message.stateTopic && entry.payload === '');
+  assert.equal(clearedState.options.retain, true);
+  assert.equal(publisher.retainedDiscovery.get('broker-1|homeassistant|entity-empty-history').statePayload, undefined);
+});
+
 test('retains only discovery by default', async () => {
   const published = [];
   const publisher = new MqttPublisher();

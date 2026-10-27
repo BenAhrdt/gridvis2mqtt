@@ -1997,7 +1997,7 @@ function initializeMqttDialogExistingSettings() {
   const comparisons = historicalSettings.comparisons ?? historicalDefaults.comparisons ?? [];
   renderHistoryComparisons($('#mqtt-dialog-history-comparisons'), comparisons);
   const retain = selectedModes.includes('historical')
-    ? cache.historicalRetainAssignments?.[measurementKeyValue] === true
+    ? cache.historicalRetainAssignments?.[measurementKeyValue] !== false
     : cache.mqttRetainAssignments?.[measurementKeyValue] === true;
   const retainInput = $('#mqtt-dialog-retain');
   if (retainInput) retainInput.checked = retain;
@@ -2206,7 +2206,7 @@ function openMqttSelectionDialog({ deviceIdValue = '', mode = 'live', measuremen
   $('#mqtt-dialog-history-interval').replaceChildren(...HISTORY_CYCLE_OPTIONS.map(([seconds, label]) => new Option(label, String(seconds))));
   $('#mqtt-dialog-history-interval').value = '300';
   $('#mqtt-dialog-history-offset').value = '2';
-  $('#mqtt-dialog-retain').checked = false;
+  $('#mqtt-dialog-retain').checked = initialMode === 'historical';
   renderHistoryRangeOptions($('#mqtt-dialog-history-ranges'), DEFAULT_HISTORY_RANGES, 'mqtt-dialog-history-range');
   renderHistoryComparisons($('#mqtt-dialog-history-comparisons'), []);
   setMqttDialogTab('selection');
@@ -2595,7 +2595,7 @@ function historicalTargetForDevice(project, id, { includeDisplay = true } = {}) 
       ...(Array.isArray(assignments[measurementKey(measurement)]) ? { mqttProfileIds: assignments[measurementKey(measurement)] } : {}),
       ...(Array.isArray(activeAssignments[measurementKey(measurement)]) ? { mqttActiveProfileIds: activeAssignments[measurementKey(measurement)] } : {}),
       historyRanges: historicalDiscoveryRanges(measurement, { project, deviceId: String(id) }),
-      retainState: (current ? state.historicalRetainAssignments : cache.historicalRetainAssignments || {})[measurementKey(measurement)] === true
+      retainState: (current ? state.historicalRetainAssignments : cache.historicalRetainAssignments || {})[measurementKey(measurement)] !== false
       };
     });
   if (!measurements.length) return null;
@@ -2728,7 +2728,7 @@ function measurementRetainState(measurement) {
   if (typeof measurement?.retainState === 'boolean') return measurement.retainState;
   const historical = isHistoricalMeasurement(measurement);
   const assignments = historical ? state.historicalRetainAssignments : state.mqttRetainAssignments;
-  return historical ? assignments[measurementKey(measurement)] === true : assignments[measurementKey(measurement)] === true;
+  return historical ? assignments?.[measurementKey(measurement)] !== false : assignments?.[measurementKey(measurement)] === true;
 }
 
 function measurementRetainStateForDevice(measurement, device = selectedDevice()) {
@@ -2739,7 +2739,8 @@ function measurementRetainStateForDevice(measurement, device = selectedDevice())
     ? cache.historicalRetainAssignments
     : cache.mqttRetainAssignments;
   if (isHistoricalMeasurement(measurement)) {
-    return measurement.retainState === true || assignments?.[measurementKey(measurement)] === true;
+    if (typeof measurement.retainState === 'boolean') return measurement.retainState;
+    return assignments?.[measurementKey(measurement)] !== false;
   }
   return measurement.retainState === true || assignments?.[measurementKey(measurement)] === true;
 }
@@ -5270,7 +5271,7 @@ function historicalTargetForMeasurements(project, id, measurements) {
         ...(Array.isArray(profileIds) ? { mqttProfileIds: profileIds } : {}),
         ...(Array.isArray(activeProfileIds) ? { mqttActiveProfileIds: activeProfileIds } : {}),
         historyRanges: historicalDiscoveryRanges(measurement, { project, deviceId: String(id) }),
-        retainState: retainAssignments[key] === true
+        retainState: retainAssignments?.[key] !== false
       };
     })
   };

@@ -159,6 +159,10 @@ function cacheHistoricalValue(job, value, time = '') {
   });
 }
 
+function historicalStateRetainEnabled(cache = {}, measurementKey = '') {
+  return cache?.historicalRetainAssignments?.[measurementKey] !== false;
+}
+
 function historicalResultCacheKey(job) {
   return `${job.deviceId}:${job.measurement.value}:${job.measurement.type}:${job.range}`;
 }
@@ -181,6 +185,12 @@ function historicalJobsForDevice(snapshot = {}, project = '', deviceId = '') {
 
 function historicalDiscoveryKeysForDevice(snapshot = {}, project = '', deviceId = '') {
   return new Set(historicalJobsForDevice(snapshot, project, deviceId)
+    .flatMap((job) => historicalValueMessages(job, '', '').map(discoveryMessageKey)));
+}
+
+function missingHistoricalDiscoveryKeysForDevice(snapshot = {}, project = '', deviceId = '') {
+  return new Set(historicalJobsForDevice(snapshot, project, deviceId)
+    .filter((job) => !historicalValueCache.has(job.key))
     .flatMap((job) => historicalValueMessages(job, '', '').map(discoveryMessageKey)));
 }
 
@@ -872,7 +882,7 @@ function activeDiscoveryMessagesFromState(snapshot = {}) {
               mqttProfileIds: [profileId],
               displaySettings: cache.displaySettings?.[measurementKey] || measurement.displaySettings,
               retainState: historical
-                ? cache.historicalRetainAssignments?.[measurementKey] === true
+                ? historicalStateRetainEnabled(cache, measurementKey)
                 : cache.mqttRetainAssignments?.[measurementKey] === true
             }]
           }, { prefix: 'homeassistant' }, {
@@ -1073,7 +1083,7 @@ function mqttOverviewRows(snapshot = {}, project = '') {
             : (Number(snapshot.deviceRefreshIntervals?.[cacheKey]) || Number(snapshot.liveRefreshInterval) || 0),
           ranges,
           retain: historical
-            ? cache.historicalRetainAssignments?.[measurementKey] === true
+            ? historicalStateRetainEnabled(cache, measurementKey)
             : cache.mqttRetainAssignments?.[measurementKey] === true
         });
       }
@@ -1749,7 +1759,7 @@ function historicalJobsFromState(snapshot = {}, brokerId = '') {
           profileIds,
           comparisons,
           minuteOffset,
-          retainState: cache.historicalRetainAssignments?.[measurementKey] === true
+          retainState: historicalStateRetainEnabled(cache, measurementKey)
         });
       }
     }
@@ -1962,6 +1972,11 @@ async function refreshHistoricalValuesForBroker(brokerId, {
           // A 204/empty response means that the current value is genuinely
           // unavailable. Do not keep or replay an older value for this job.
           historicalValueCache.delete(job.key);
+          const activeKeys = new Set(activeDiscoveryMessagesFromState(getState()).map(discoveryMessageKey));
+          const clearedRetained = await mqtt.clearRetainedValues(
+            historicalValueMessages(job, '', historicalApiTime(data))
+              .filter((message) => activeKeys.has(discoveryMessageKey(message)))
+          );
           console.warn(`Kein historischer Wert für ${job.measurement.value}/${job.measurement.type} (${job.range}) erhalten.`);
           logbook.warning('gridvis.historical-empty', {
             project: job.project,
@@ -1973,9 +1988,10 @@ async function refreshHistoricalValuesForBroker(brokerId, {
             responseType: Array.isArray(data) ? 'array' : typeof data,
             responseKeys: data && typeof data === 'object' && !Array.isArray(data)
               ? Object.keys(data).slice(0, 12)
-              : []
+              : [],
+            clearedRetained
           });
-          return { job, published: 0, empty: true };
+          return { job, published: 0, empty: true, clearedRetained };
         }
         const messages = historicalValueMessages(job, value, historicalApiTime(data));
         const activeKeys = new Set(activeDiscoveryMessagesFromState(getState()).map(discoveryMessageKey));
@@ -2032,6 +2048,7 @@ async function refreshHistoricalValuesForBroker(brokerId, {
     const errors = results.filter((result) => result.error).length;
     const empty = results.filter((result) => result.empty).length;
     const stale = results.filter((result) => result.stale).length;
+    const clearedRetained = results.reduce((sum, result) => sum + Number(result.clearedRetained || 0), 0);
     logbook[published > 0 ? 'success' : 'warning']('mqtt.historical-refresh', {
       brokerId,
       phase: 'complete',
@@ -2039,24 +2056,27 @@ async function refreshHistoricalValuesForBroker(brokerId, {
       published,
       errors,
       empty,
-      stale
+      stale,
+      clearedRetained
     });
     return {
       requested: jobs.length,
       published,
-      errors
+      errors,
+      clearedRetained
     };
   })().finally(() => historicalRefreshInFlight.delete(brokerId));
   historicalRefreshInFlight.set(brokerId, promise);
   return promise;
 }
 
-async function refreshHistoricalValuesForConnectedBrokers({ force = false, scheduled = false, messageKeys = null, snapshot = getState(), retryInFlight = false } = {}) {
+async function refreshHistoricalValuesForConnectedBrokers({ force = false, scheduled = false, onlyMissing = false, messageKeys = null, snapshot = getState(), retryInFlight = false } = {}) {
   const brokers = mqtt.getSnapshot().brokers.filter((broker) => broker.connected);
   logbook.info('mqtt.historical-cycle', {
     phase: 'start',
     force,
     scheduled,
+    onlyMissing,
     connectedBrokers: brokers.map((broker) => broker.id),
     discoveryFilterKeys: messageKeys ? messageKeys.size : null,
     retryInFlight
@@ -2073,6 +2093,7 @@ async function refreshHistoricalValuesForConnectedBrokers({ force = false, sched
   const results = await Promise.all(brokers.map((broker) => refreshHistoricalValuesForBroker(broker.id, {
     force,
     scheduled,
+    onlyMissing,
     messageKeys,
     snapshot
   })));
@@ -3145,13 +3166,23 @@ async function handleApi(request, response, url) {
         source: `mqtt-overview-${action}`,
         deviceKey: project
       });
-      const newlyActiveHistoryKeys = newlyActiveHistoricalDiscoveryKeys(previousState, committedState);
+      const initialHistoryKeys = newlyActiveHistoricalDiscoveryKeys(previousState, committedState);
+      for (const touchedDevice of summary.touchedDevices || []) {
+        const separator = touchedDevice.lastIndexOf('::');
+        if (separator < 0) continue;
+        for (const key of missingHistoricalDiscoveryKeysForDevice(
+          committedState,
+          touchedDevice.slice(0, separator),
+          touchedDevice.slice(separator + 2)
+        )) initialHistoryKeys.add(key);
+      }
       await mqtt.reconcileRetainedDiscovery(activeDiscoveryKeysFromState(committedState));
       await syncNewStateToConnectedBrokers(previousState, committedState, { previousMessages, nextMessages });
-      if (newlyActiveHistoryKeys.size) {
+      if (initialHistoryKeys.size) {
         await refreshHistoricalValuesForConnectedBrokers({
           force: true,
-          messageKeys: newlyActiveHistoryKeys,
+          onlyMissing: true,
+          messageKeys: initialHistoryKeys,
           snapshot: committedState,
           retryInFlight: true
         });
@@ -3186,13 +3217,17 @@ async function handleApi(request, response, url) {
         deviceKey: `${input?.project || ''}::${input?.deviceId || ''}`,
         clientMutationVersion: input?.clientMutationVersion
       });
-      const newlyActiveHistoryKeys = newlyActiveHistoricalDiscoveryKeys(previousState, committedState);
+      const initialHistoryKeys = new Set(newlyActiveHistoricalDiscoveryKeys(previousState, committedState));
+      for (const key of missingHistoricalDiscoveryKeysForDevice(committedState, input.project, input.deviceId)) {
+        initialHistoryKeys.add(key);
+      }
       await mqtt.reconcileRetainedDiscovery(activeDiscoveryKeysFromState(committedState));
       await syncNewStateToConnectedBrokers(previousState, committedState, { previousMessages, nextMessages });
-      if (newlyActiveHistoryKeys.size) {
+      if (initialHistoryKeys.size) {
         await refreshHistoricalValuesForConnectedBrokers({
           force: true,
-          messageKeys: newlyActiveHistoryKeys,
+          onlyMissing: true,
+          messageKeys: initialHistoryKeys,
           snapshot: committedState,
           retryInFlight: true
         });
@@ -3227,16 +3262,23 @@ async function handleApi(request, response, url) {
         deviceKey: `${incomingState?.currentDeviceState?.project || ''}::${incomingState?.currentDeviceState?.deviceId || ''}`,
         clientMutationVersion: incomingState?.clientMutationVersion
       });
-      const newlyActiveHistoryKeys = newlyActiveHistoricalDiscoveryKeys(previousState, committedState);
+      const initialHistoryKeys = new Set(newlyActiveHistoricalDiscoveryKeys(previousState, committedState));
+      const currentDeviceState = incomingState?.currentDeviceState || {};
+      for (const key of missingHistoricalDiscoveryKeysForDevice(
+        committedState,
+        currentDeviceState.project,
+        currentDeviceState.deviceId
+      )) initialHistoryKeys.add(key);
       await mqtt.reconcileRetainedDiscovery(activeDiscoveryKeysFromState(committedState));
       // A state change is the authoritative selection event. Publish discovery
       // first and its matching value after a short broker-side delay, so this
       // also works while the browser tab is in the background.
       await syncNewStateToConnectedBrokers(previousState, committedState);
-      if (newlyActiveHistoryKeys.size) {
+      if (initialHistoryKeys.size) {
         await refreshHistoricalValuesForConnectedBrokers({
           force: true,
-          messageKeys: newlyActiveHistoryKeys,
+          onlyMissing: true,
+          messageKeys: initialHistoryKeys,
           snapshot: committedState,
           retryInFlight: true
         });

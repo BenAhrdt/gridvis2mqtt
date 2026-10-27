@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.7] - 2026-10-27
+
+- Historische MQTT-State-Werte werden standardmäßig retained veröffentlicht; Livewerte bleiben standardmäßig nicht retained.
+- Aktive historische Jobs ohne Backend-Cache werden nach einem State-Commit sofort aus GridVis geladen, statt bis zum nächsten regulären Zyklus zu warten.
+- Leere oder HTTP-204-Historienantworten löschen zuvor retained veröffentlichte State-Werte mit einer leeren retained Payload.
+- Tests decken das Löschen eines retained State-Werts bei leerer Historienquelle ab.
+
 ## [0.4.6] - 2026-10-27
 
 - Die Übersicht zeigt jetzt die Laufzeitressourcen des Node-Prozesses: Prozess-CPU, residenten RAM (RSS), V8-Heap, externen Speicher und Laufzeit.

@@ -457,6 +457,25 @@ export class MqttPublisher {
     return count;
   }
 
+  async clearRetainedValues(messages) {
+    let cleared = 0;
+    let changed = false;
+    for (const message of messages || []) {
+      if (!message?.stateTopic || message.stateRetain !== true) continue;
+      const entry = this.retainedDiscovery.get(retainedKey(message));
+      if (!entry
+        || entry.active === false
+        || entry.stateRetain !== true
+        || entry.stateTopic !== message.stateTopic) continue;
+      await this.publish(message.stateTopic, '', { retain: true }, message.brokerId);
+      entry.statePayload = undefined;
+      changed = true;
+      cleared += 1;
+    }
+    if (changed) this.notifyRetainedDiscoveryChange();
+    return cleared;
+  }
+
   getSnapshot() {
     return {
       status: this.status,
