@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.13] - 2026-10-29
+
+- Live-, Historien- und Discovery-Pfade klonen pro Messwert nicht mehr die vollständige Laufzeitkonfiguration inklusive retained Discoveries, sondern verwenden einen kleinen öffentlichen Konfigurations-Snapshot.
+- Livewerte werden bei mehreren verbundenen MQTT-Brokern je Projekt und Messwert nur einmal aus GridVis geladen und anschließend brokerbezogen veröffentlicht.
+- Unveränderte Live-Discovery-Metadaten werden zwischengespeichert; pro Zyklus werden nur die State-Werte aktualisiert. MQTT-State-Publishes bleiben topic- und payload-kompatibel, werden intern begrenzt parallel versendet und nur noch zyklusweise protokolliert.
+
 ## [0.4.12] - 2026-10-29
 
 - Das Logbuch verwaltet seine maximal 5.000 Einträge jetzt mit einem verzögerten Ring-/Prefix-Buffer statt bei jedem neuen Ereignis das gesamte Array am Anfang zu verschieben. Dadurch sinkt der CPU-Aufwand bei vielen API- und MQTT-Logeinträgen deutlich.

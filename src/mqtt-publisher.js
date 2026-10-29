@@ -1,6 +1,8 @@
 import mqtt from 'mqtt';
 import { logbook } from './logbook.js';
 
+const VALUE_PUBLISH_CONCURRENCY = 16;
+
 function retainedKey(message) {
   return [message.brokerId || 'default', message.profileId || 'homeassistant', message.uniqueId || message.configTopic].join('|');
 }
@@ -275,28 +277,33 @@ export class MqttPublisher {
       qos: options.qos ?? 1,
       retain: options.retain ?? false
     };
+    const logPublish = options.log !== false;
     const startedAt = Date.now();
     try {
       await new Promise((resolve, reject) => {
         client.publish(topic, message, publishOptions, (error) => error ? reject(error) : resolve());
       });
-      logbook.success('mqtt.publish', {
-        brokerId: brokerId || 'default',
-        topic,
-        qos: publishOptions.qos,
-        retain: publishOptions.retain,
-        payloadBytes: Buffer.byteLength(message),
-        durationMs: Date.now() - startedAt
-      });
+      if (logPublish) {
+        logbook.success('mqtt.publish', {
+          brokerId: brokerId || 'default',
+          topic,
+          qos: publishOptions.qos,
+          retain: publishOptions.retain,
+          payloadBytes: Buffer.byteLength(message),
+          durationMs: Date.now() - startedAt
+        });
+      }
     } catch (error) {
-      logbook.error('mqtt.publish', {
-        brokerId: brokerId || 'default',
-        topic,
-        qos: publishOptions.qos,
-        retain: publishOptions.retain,
-        durationMs: Date.now() - startedAt,
-        error: error.message
-      });
+      if (logPublish) {
+        logbook.error('mqtt.publish', {
+          brokerId: brokerId || 'default',
+          topic,
+          qos: publishOptions.qos,
+          retain: publishOptions.retain,
+          durationMs: Date.now() - startedAt,
+          error: error.message
+        });
+      }
       throw error;
     }
   }
@@ -421,8 +428,10 @@ export class MqttPublisher {
   }
 
   async publishValues(messages) {
+    const startedAt = Date.now();
     let count = 0;
     let changed = false;
+    const pendingByKey = new Map();
     for (const message of messages) {
       if (message.stateValue === undefined || message.stateValue === null || message.stateValue === '') continue;
       const payload = {
@@ -436,24 +445,60 @@ export class MqttPublisher {
       // prevents an in-flight historical request from publishing an old
       // range after that range was disabled and its discovery was removed.
       if (!entry || entry.active === false || entry.availabilityValue === 'offline' || entry.stateTopic !== message.stateTopic) continue;
-      if (entry?.stateRetain && message.stateRetain !== true) {
-        await this.clearRetainedEntry(entry, { discovery: false, state: true });
-        entry.stateRetain = false;
-        entry.statePayload = undefined;
-        changed = true;
-      }
-      await this.publish(message.stateTopic, payload, { retain: message.stateRetain === true }, message.brokerId);
-      if (message.stateRetain === true) {
-        if (entry) {
-          entry.stateTopic = message.stateTopic;
-          entry.stateRetain = true;
-          entry.statePayload = payload;
-          changed = true;
+      const retainedMessageKey = retainedKey(message);
+      if (!pendingByKey.has(retainedMessageKey)) pendingByKey.set(retainedMessageKey, []);
+      pendingByKey.get(retainedMessageKey).push({ message, payload, entry });
+    }
+
+    const groups = [...pendingByKey.values()];
+    let nextGroup = 0;
+    const worker = async () => {
+      while (true) {
+        const groupIndex = nextGroup++;
+        if (groupIndex >= groups.length) return;
+        for (const { message, payload, entry } of groups[groupIndex]) {
+          if (entry.stateRetain && message.stateRetain !== true) {
+            await this.clearRetainedEntry(entry, { discovery: false, state: true });
+            entry.stateRetain = false;
+            entry.statePayload = undefined;
+            changed = true;
+          }
+          await this.publish(
+            message.stateTopic,
+            payload,
+            { retain: message.stateRetain === true, log: false },
+            message.brokerId
+          );
+          if (message.stateRetain === true) {
+            entry.stateTopic = message.stateTopic;
+            entry.stateRetain = true;
+            entry.statePayload = payload;
+            changed = true;
+          }
+          count += 1;
         }
       }
-      count += 1;
+    };
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(VALUE_PUBLISH_CONCURRENCY, groups.length) }, worker));
+    } catch (error) {
+      logbook.error('mqtt.publish-values', {
+        messages: groups.reduce((total, group) => total + group.length, 0),
+        published: count,
+        durationMs: Date.now() - startedAt,
+        error: error.message
+      });
+      throw error;
     }
     if (changed) this.notifyRetainedDiscoveryChange();
+    if (count) {
+      logbook.success('mqtt.publish-values', {
+        messages: groups.reduce((total, group) => total + group.length, 0),
+        published: count,
+        durationMs: Date.now() - startedAt
+      });
+    }
     return count;
   }
 

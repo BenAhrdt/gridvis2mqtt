@@ -65,6 +65,8 @@ let liveRefreshTimer = null;
 const liveRefreshInFlight = new Map();
 const liveLastRequestedAt = new Map();
 const liveValueCache = new Map();
+const LIVE_DISCOVERY_CACHE_LIMIT = 4096;
+const liveDiscoveryCache = new Map();
 // Historical MQTT values are fetched and owned by the backend. Keep the
 // latest value per scheduled job so the browser can render the same result
 // without starting another GridVis request.
@@ -786,7 +788,7 @@ function stopGridvisSchedulers() {
 }
 
 function activeDiscoveryMessagesFromState(snapshot = {}) {
-  const configured = getConfig();
+  const configured = getPublicConfig();
   const messages = [];
   const bridgeMessages = [];
   const deviceInfoKeys = new Set();
@@ -993,7 +995,7 @@ function mqttOverviewDeviceName(device = {}, fallback = '') {
 }
 
 function mqttOverviewRows(snapshot = {}, project = '') {
-  const configured = getConfig();
+  const configured = getPublicConfig();
   const profiles = Array.isArray(configured.mqtt.profiles) ? configured.mqtt.profiles : [];
   const profileNames = new Map(profiles.map((profile) => [profile.id, profile.name || profile.id]));
   const caches = snapshot.measurementCache && typeof snapshot.measurementCache === 'object'
@@ -1203,7 +1205,8 @@ function activeLiveJobsFromState(snapshot = {}, brokerId = '') {
   const deviceCaches = snapshot.deviceCache && typeof snapshot.deviceCache === 'object'
     ? snapshot.deviceCache
     : {};
-  const profiles = Array.isArray(getConfig().mqtt.profiles) ? getConfig().mqtt.profiles : [];
+  const configured = getPublicConfig();
+  const profiles = Array.isArray(configured.mqtt.profiles) ? configured.mqtt.profiles : [];
   const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
   const defaultRefreshInterval = Number(snapshot.liveRefreshInterval) || 0;
   const deviceRefreshIntervals = snapshot.deviceRefreshIntervals && typeof snapshot.deviceRefreshIntervals === 'object'
@@ -1253,7 +1256,62 @@ function activeLiveJobsFromState(snapshot = {}, brokerId = '') {
   return jobs;
 }
 
+function liveJobsForRefresh(snapshot, brokerId, { force = false, onlyMissing = false } = {}) {
+  const now = Date.now();
+  let jobs = activeLiveJobsFromState(snapshot, brokerId).filter((job) => {
+    if (force) return true;
+    if (!job.refreshInterval) return false;
+    const lastRequestedAt = liveLastRequestedAt.get(`${brokerId}|${job.key}`) || 0;
+    return now - lastRequestedAt >= job.refreshInterval * 1000;
+  });
+  if (onlyMissing) {
+    jobs = jobs.filter((job) => !liveValueCache.has(liveValueCacheKey(
+      job.project,
+      job.deviceId,
+      job.measurement.value,
+      job.measurement.type
+    )));
+  }
+  return jobs;
+}
+
+function liveDiscoveryCacheKey(job, configured) {
+  const profiles = (configured.mqtt.profiles || [])
+    .filter((profile) => job.profileIds.includes(profile.id));
+  return JSON.stringify({
+    project: job.project,
+    device: job.device,
+    measurement: job.measurement,
+    profileIds: job.profileIds,
+    profiles,
+    retainState: job.retainState,
+    topicPrefix: configured.mqtt.topicPrefix
+  });
+}
+
+function cachedLiveDiscoveryMessages(job, configured, stateValue, stateTime = '') {
+  const cacheKey = liveDiscoveryCacheKey(job, configured);
+  let templates = liveDiscoveryCache.get(cacheKey);
+  if (!templates) {
+    const messages = buildDiscoveryMessagesForRequest({
+      project: job.project,
+      device: job.device,
+      measurements: [{
+        ...job.measurement,
+        device: job.device,
+        mqttProfileIds: job.profileIds,
+        retainState: job.retainState
+      }]
+    }, { prefix: 'homeassistant' }, { configured });
+    templates = messages.map(({ stateValue: _stateValue, stateTime: _stateTime, ...message }) => message);
+    if (liveDiscoveryCache.size >= LIVE_DISCOVERY_CACHE_LIMIT) liveDiscoveryCache.clear();
+    liveDiscoveryCache.set(cacheKey, templates);
+  }
+  return templates.map((message) => ({ ...message, stateValue, stateTime }));
+}
+
 async function publishCachedLiveValuesForBroker(snapshot, brokerId, messageKeys = null) {
+  const configured = getPublicConfig();
   const jobs = activeLiveJobsFromState(snapshot, brokerId);
   const messages = jobs.flatMap((job) => {
     const cached = liveValueCache.get(liveValueCacheKey(
@@ -1263,18 +1321,8 @@ async function publishCachedLiveValuesForBroker(snapshot, brokerId, messageKeys 
       job.measurement.type
     ));
     if (!cached) return [];
-    return buildDiscoveryMessagesForRequest({
-      project: job.project,
-      device: job.device,
-      measurements: [{
-        ...job.measurement,
-        device: job.device,
-        mqttProfileIds: job.profileIds,
-        liveValue: cached.value,
-        liveTime: cached.time,
-        retainState: job.retainState
-      }]
-    }, { prefix: 'homeassistant' }).filter((message) => !messageKeys || messageKeys.has(discoveryMessageKey(message)));
+    return cachedLiveDiscoveryMessages(job, configured, cached.value, cached.time)
+      .filter((message) => !messageKeys || messageKeys.has(discoveryMessageKey(message)));
   });
   logbook.info('mqtt.live-cache', {
     brokerId,
@@ -1298,37 +1346,20 @@ async function publishCachedLiveValuesForBroker(snapshot, brokerId, messageKeys 
   return published;
 }
 
-async function publishLiveValuesForBroker(snapshot, brokerId, messageKeys = null, { force = false, onlyMissing = false } = {}) {
+async function publishLiveValuesForBroker(snapshot, brokerId, messageKeys = null, {
+  force = false,
+  onlyMissing = false,
+  jobs: suppliedJobs = null,
+  onlineValueLookups = null
+} = {}) {
   if (!gridvis.configured || !mqtt.isBrokerConnected(brokerId)) return 0;
-  const now = Date.now();
-  let jobs = activeLiveJobsFromState(snapshot, brokerId).filter((job) => {
-    if (force) return true;
-    if (!job.refreshInterval) return false;
-    const lastRequestedAt = liveLastRequestedAt.get(`${brokerId}|${job.key}`) || 0;
-    return now - lastRequestedAt >= job.refreshInterval * 1000;
-  });
-  if (onlyMissing) {
-    jobs = jobs.filter((job) => !liveValueCache.has(liveValueCacheKey(
-      job.project,
-      job.deviceId,
-      job.measurement.value,
-      job.measurement.type
-    )));
-  }
+  const configured = getPublicConfig();
+  let jobs = suppliedJobs || liveJobsForRefresh(snapshot, brokerId, { force, onlyMissing });
   if (messageKeys) {
     // A state change can concern only historical discovery. Do not query all
     // live devices first and discard their messages afterwards.
-    jobs = jobs.filter((job) => buildDiscoveryMessagesForRequest({
-      project: job.project,
-      device: job.device,
-      measurements: [{
-        ...job.measurement,
-        device: job.device,
-        mqttProfileIds: job.profileIds,
-        liveValue: '',
-        retainState: job.retainState
-      }]
-    }, { prefix: 'homeassistant' }).some((message) => messageKeys.has(discoveryMessageKey(message))));
+    jobs = jobs.filter((job) => cachedLiveDiscoveryMessages(job, configured, '', '')
+      .some((message) => messageKeys.has(discoveryMessageKey(message))));
   }
   if (!jobs.length) return 0;
   const grouped = new Map();
@@ -1339,25 +1370,20 @@ async function publishLiveValuesForBroker(snapshot, brokerId, messageKeys = null
 
   const counts = await Promise.all([...grouped].map(async ([project, projectJobs]) => {
     try {
-      for (const job of projectJobs) liveLastRequestedAt.set(`${brokerId}|${job.key}`, now);
+      const requestedAt = Date.now();
+      for (const job of projectJobs) liveLastRequestedAt.set(`${brokerId}|${job.key}`, requestedAt);
       const values = [...new Set(projectJobs.map((job) => `${job.deviceId};${job.measurement.value};${job.measurement.type}`))];
-      const data = await gridvis.getOnlineValues({ project, values, timeout: 500 });
-      const onlineValues = createOnlineValueLookup(data);
+      let onlineValues;
+      if (onlineValueLookups?.has(project)) {
+        onlineValues = onlineValueLookups.get(project);
+      } else {
+        const data = await gridvis.getOnlineValues({ project, values, timeout: 500 });
+        onlineValues = createOnlineValueLookup(data);
+      }
       const liveResults = projectJobs.map((job) => {
         const result = lookupOnlineValue(onlineValues, job.measurement, job.deviceId);
         if (!result) return { job, result: null, messages: [] };
-        const built = buildDiscoveryMessagesForRequest({
-          project: job.project,
-          device: job.device,
-          measurements: [{
-            ...job.measurement,
-            device: job.device,
-            mqttProfileIds: job.profileIds,
-            liveValue: result.value,
-            liveTime: result.time,
-            retainState: job.retainState
-          }]
-        }, { prefix: 'homeassistant' });
+        const built = cachedLiveDiscoveryMessages(job, configured, result.value, result.time);
         return {
           job,
           result,
@@ -1390,21 +1416,86 @@ async function publishLiveValuesForBroker(snapshot, brokerId, messageKeys = null
   return published;
 }
 
-async function refreshLiveValuesForBroker(brokerId, { force = false, onlyMissing = false, snapshot = getState() } = {}) {
-  if (liveRefreshInFlight.has(brokerId)) return liveRefreshInFlight.get(brokerId);
-  const request = publishLiveValuesForBroker(snapshot, brokerId, null, { force, onlyMissing })
-    .finally(() => liveRefreshInFlight.delete(brokerId));
-  liveRefreshInFlight.set(brokerId, request);
-  return request;
+async function fetchSharedOnlineValueLookups(projectValues) {
+  const lookups = new Map();
+  await Promise.all([...projectValues].map(async ([project, values]) => {
+    try {
+      const data = await gridvis.getOnlineValues({ project, values: [...values], timeout: 500 });
+      lookups.set(project, createOnlineValueLookup(data));
+    } catch (error) {
+      // Keep the failed project in the map so broker-specific publishing does
+      // not retry the same GridVis request once per broker.
+      lookups.set(project, new Map());
+      console.warn(`Live-MQTT-Werte für Projekt ${project} konnten nicht geladen werden:`, error.message);
+    }
+  }));
+  return lookups;
 }
 
-async function refreshLiveValuesForConnectedBrokers({ force = false, snapshot = getState() } = {}) {
+async function refreshSharedLiveValuesForBrokers(brokers, snapshot, { force = false, onlyMissing = false } = {}) {
+  const jobsByBroker = new Map();
+  const projectValues = new Map();
+  for (const broker of brokers) {
+    const jobs = liveJobsForRefresh(snapshot, broker.id, { force, onlyMissing });
+    jobsByBroker.set(broker.id, jobs);
+    for (const job of jobs) {
+      if (!projectValues.has(job.project)) projectValues.set(job.project, new Set());
+      projectValues.get(job.project).add(`${job.deviceId};${job.measurement.value};${job.measurement.type}`);
+    }
+  }
+  if (!projectValues.size) return 0;
+
+  // The same project/value request is shared by all brokers. Broker-specific
+  // publishing still happens separately because each broker has its own
+  // Discovery registry and state topics.
+  const onlineValueLookups = await fetchSharedOnlineValueLookups(projectValues);
+  const counts = await Promise.all(brokers.map((broker) => publishLiveValuesForBroker(
+    snapshot,
+    broker.id,
+    null,
+    {
+      force,
+      onlyMissing,
+      jobs: jobsByBroker.get(broker.id) || [],
+      onlineValueLookups
+    }
+  )));
+  return counts.reduce((sum, count) => sum + count, 0);
+}
+
+async function refreshLiveValuesForConnectedBrokers({ force = false, onlyMissing = false, snapshot = getState() } = {}) {
   // Do not let a scheduler run against the just-committed state while its
   // Discovery messages are still being published. The state mutation path
   // publishes Discovery first and deliberately waits before the first value.
   await stateMutationQueue.catch(() => {});
   const brokers = mqtt.getSnapshot().brokers.filter((broker) => broker.connected);
-  await Promise.all(brokers.map((broker) => refreshLiveValuesForBroker(broker.id, { force, snapshot })));
+  const pending = [];
+  const available = [];
+  for (const broker of brokers) {
+    const inFlight = liveRefreshInFlight.get(broker.id);
+    if (inFlight) pending.push(inFlight);
+    else available.push(broker);
+  }
+  // Do not start a second batch for only the brokers that became available in
+  // the meantime. Waiting for the current batch keeps a shared project/value
+  // request from being duplicated during reconnects or timer rescheduling.
+  if (pending.length) {
+    await Promise.all(pending);
+    return;
+  }
+  if (available.length) {
+    let sharedRequest;
+    sharedRequest = Promise.resolve()
+      .then(() => refreshSharedLiveValuesForBrokers(available, snapshot, { force, onlyMissing }))
+      .finally(() => {
+        for (const broker of available) {
+          if (liveRefreshInFlight.get(broker.id) === sharedRequest) liveRefreshInFlight.delete(broker.id);
+        }
+      });
+    for (const broker of available) liveRefreshInFlight.set(broker.id, sharedRequest);
+    pending.push(sharedRequest);
+  }
+  await Promise.all(pending);
 }
 
 function scheduleLiveRefresh() {
@@ -1699,7 +1790,8 @@ function historicalJobsFromState(snapshot = {}, brokerId = '') {
   const globalInterval = normalizedHistoryInterval(globalSettings.refreshInterval);
   const globalRanges = normalizedHistoryRanges(globalSettings.ranges);
   const globalMinuteOffset = normalizedHistoryMinuteOffset(globalSettings.minuteOffset);
-  const profiles = Array.isArray(getConfig().mqtt.profiles) ? getConfig().mqtt.profiles : [];
+  const configured = getPublicConfig();
+  const profiles = Array.isArray(configured.mqtt.profiles) ? configured.mqtt.profiles : [];
   const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
   const jobs = [];
 
@@ -2228,7 +2320,7 @@ async function handleBrokerConnected(brokerId) {
       note: 'Der reguläre DeviceInfo-Zyklus bleibt unabhängig aktiv.'
     });
     if (missingLiveJobs.length) {
-      backgroundTasks.push(refreshLiveValuesForBroker(brokerId, {
+      backgroundTasks.push(refreshLiveValuesForConnectedBrokers({
         force: true,
         onlyMissing: true,
         snapshot: getState()
@@ -2761,9 +2853,13 @@ function buildDiscoveryMessagesForRequest(input, discovery, {
   includeBridge = false,
   bridgeProfiles: sharedBridgeProfiles = null,
   includeDeviceInfo = false,
-  deviceInfoKeys: sharedDeviceInfoKeys = null
+  deviceInfoKeys: sharedDeviceInfoKeys = null,
+  configured: suppliedConfigured = null
 } = {}) {
-  const configured = getConfig();
+  // Live cycles call this once per active measurement. Reuse the small public
+  // configuration snapshot supplied by the caller instead of deep-cloning the
+  // full runtime config, including all retained Discovery entries, each time.
+  const configured = suppliedConfigured || getPublicConfig();
   const profiles = Array.isArray(configured.mqtt.profiles) ? configured.mqtt.profiles : [];
   const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
   const defaultProfileId = configured.mqtt.defaultProfileId || profiles.find((profile) => profile.isDefault)?.id || profiles[0]?.id;
