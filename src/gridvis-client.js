@@ -89,6 +89,46 @@ export function normalizeOnlineValues(data) {
   return entries.length ? entries : data;
 }
 
+function onlineValueKey(deviceId, value, type) {
+  return `${String(deviceId)}\u0000${String(value)}\u0000${String(type)}`;
+}
+
+function onlineValueParts(entry = {}) {
+  const valueType = entry?.valueType || entry?.value_type || {};
+  return {
+    deviceId: entry?.deviceId ?? entry?.device?.id ?? entry?.device?.deviceId,
+    value: valueType.value ?? valueType.name ?? entry?.valueName,
+    type: valueType.type ?? valueType.typeName ?? entry?.type
+  };
+}
+
+/**
+ * Build one lookup table for a normalized online-values response. The backend
+ * can then resolve every requested measurement in O(1) instead of walking and
+ * normalizing the complete response once per measurement.
+ */
+export function createOnlineValueLookup(data) {
+  const entries = normalizeOnlineValues(data);
+  if (!Array.isArray(entries)) return new Map();
+
+  const lookup = new Map();
+  for (const entry of entries) {
+    const parts = onlineValueParts(entry);
+    if (lookup.has(onlineValueKey(parts.deviceId, parts.value, parts.type))) continue;
+    lookup.set(onlineValueKey(parts.deviceId, parts.value, parts.type), {
+      value: entry.value,
+      time: entry.time || entry.timestamp || ''
+    });
+  }
+  return lookup;
+}
+
+export function lookupOnlineValue(lookup, measurement, deviceId) {
+  const result = lookup?.get(onlineValueKey(deviceId, measurement?.value, measurement?.type));
+  if (!result || result.value === undefined || result.value === null || result.value === '') return null;
+  return result;
+}
+
 export class GridVisClient {
   constructor(settings = {}) {
     this.lastConnection = 'unknown';

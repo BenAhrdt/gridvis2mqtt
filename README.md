@@ -13,6 +13,8 @@ Der erste Profil-Renderer ist `Home Assistant`. Die Anwendung bleibt intern Grid
 
 Die Übersicht zeigt die aktuelle Laufzeitnutzung der Anwendung. Angezeigt werden Prozess-CPU, residenter RAM (RSS), V8-Heap, externer Speicher und die Laufzeit seit dem letzten Start. CPU und RAM werden zusätzlich kompakt in der Kopfzeile neben dem GridVis2MQTT-Logo gespiegelt; die Werte stammen direkt aus dem Node-Prozess und werden über den bestehenden Verbindungsstatus-Zyklus aktualisiert.
 
+Unter Linux setzt der Node-Prozess seinen kurzen Prozessnamen auf `gridvis2mqtt`. Die vollständige Kommandozeile kann je nach Node-/Linux-Darstellung weiterhin abweichen; zur Kontrolle eignen sich `ps -eo pid,comm,args | grep gridvis2mqtt` sowie `cat /proc/<PID>/comm`.
+
 Verwendete REST-Ressourcen:
 
 - `/rest/1/projects`
@@ -27,6 +29,8 @@ Verwendete REST-Ressourcen:
 - `/rest/common/info/version/full`
 
 Die beiden Ressourcen `.../online/values` und `.../hist/values` liefern die verfügbaren Messwertdefinitionen eines Geräts. Die tatsächlichen Livewerte werden anschließend gebündelt als JSON über `onlinevalues` gelesen. Historische Werte werden je Messwert und Zeitraum über `histenergy` als JSON angefordert, ohne `timebase`: GridVis liefert damit die Aggregation; Energie-/Verbrauchswerte werden als Summe und andere Werte als Durchschnitt ausgewertet. Die alte Einzelwert-/Zeitbasis-Route wird dafür nicht verwendet. Die GridVis-Version wird über `.../info/version/full` gelesen. Die lokale Dokumentation einer GridVis-Installation ist unter `/rest/doc/` verfügbar.
+
+Eine gebündelte `onlinevalues`-Antwort wird im Backend pro Projekt nur einmal normalisiert und über eine Lookup-Tabelle den aktiven Messwerten zugeordnet. Dadurch bleibt die API-Abfrage unverändert, vermeidet aber bei vielen Messwerten wiederholtes Parsen derselben Antwort.
 
 ## Start
 

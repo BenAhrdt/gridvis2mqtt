@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.11] - 2026-10-29
+
+- Gebündelte GridVis-Liveantworten werden pro Projekt nur einmal normalisiert und danach per Lookup den Messwerten zugeordnet; MQTT-Topics, Payloads und das 2-Sekunden-Intervall bleiben unverändert.
+- Der Linux-Prozessname wird als `gridvis2mqtt` gesetzt, damit der Dienst in `top`, `htop` und `ps` leichter erkennbar ist.
+
 ## [0.4.10] - 2026-10-27
 
 - Der Geräte-Standardzyklus für Live-Werte wird jetzt pro Projekt und Gerät gespeichert, statt beim Ändern alle Geräte zu beeinflussen.

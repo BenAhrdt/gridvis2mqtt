@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildBridgeApplicationUrlDiscovery, buildBridgeDiscovery, buildDeviceInfoDiscoveries, buildHomeAssistantDiscovery } from '../src/discovery/home-assistant.js';
-import { GridVisClient, groupOnlineValueRequests, normalizeOnlineValues } from '../src/gridvis-client.js';
+import { createOnlineValueLookup, GridVisClient, groupOnlineValueRequests, lookupOnlineValue, normalizeOnlineValues } from '../src/gridvis-client.js';
 import { listDataFromResponse } from '../src/list-data.js';
 import { MqttPublisher } from '../src/mqtt-publisher.js';
 import { applyMqttOverviewRows } from '../src/mqtt-overview.js';
@@ -70,6 +70,25 @@ test('normalizes GridVis online value maps without relying on response order', (
     ['U_Effective', 'L2-L1', 416.2]
   ]);
   assert.equal(values[2].time, 102);
+});
+
+test('resolves normalized online values through a reusable lookup', () => {
+  const lookup = createOnlineValueLookup({
+    value: {
+      '26.PowerActive.Overall': 1200,
+      '26.PowerActive.L1': 410
+    },
+    time: {
+      '26.PowerActive.Overall': 100,
+      '26.PowerActive.L1': 101
+    }
+  });
+
+  assert.deepEqual(lookupOnlineValue(lookup, { value: 'PowerActive', type: 'Overall' }, 26), {
+    value: 1200,
+    time: 100
+  });
+  assert.equal(lookupOnlineValue(lookup, { value: 'PowerActive', type: 'L2' }, 26), null);
 });
 
 test('groups online value types like the ioBroker adapter', () => {

@@ -21,7 +21,7 @@ import {
   updateOwnProfile,
   verifyUserPassword
 } from './auth.js';
-import { GridVisClient, normalizeOnlineValues } from './gridvis-client.js';
+import { createOnlineValueLookup, GridVisClient, normalizeOnlineValues, lookupOnlineValue } from './gridvis-client.js';
 import { listDataFromResponse } from './list-data.js';
 import { buildBridgeApplicationUrlDiscovery, buildBridgeDiscovery, buildDeviceInfoDiscoveries, buildDiscoveryMessages, normalizeDiscoveryPrefix } from './discovery/home-assistant.js';
 import { MqttPublisher } from './mqtt-publisher.js';
@@ -32,6 +32,10 @@ import { LOGBOOK_MAX_ENTRIES, logbook } from './logbook.js';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const publicDir = join(root, 'public');
 const execFile = promisify(execFileCallback);
+
+// Keep the Linux process name short and unambiguous in top/htop/ps. Node
+// applies this to the main process comm name without any native dependency.
+if (process.platform === 'linux') process.title = 'gridvis2mqtt';
 const updateStatusPath = process.env.GRIDVIS2MQTT_UPDATE_STATUS_FILE
   || join(process.env.GRIDVIS2MQTT_DATA_DIR || join(root, 'data'), 'update-status.json');
 const config = getConfig();
@@ -1249,26 +1253,6 @@ function activeLiveJobsFromState(snapshot = {}, brokerId = '') {
   return jobs;
 }
 
-function onlineApiValue(data, measurement, deviceId) {
-  const entries = normalizeOnlineValues(data);
-  if (!Array.isArray(entries)) return null;
-  for (const entry of entries) {
-    const valueType = entry?.valueType || entry?.value_type || {};
-    const entryDeviceId = entry?.deviceId ?? entry?.device?.id ?? entry?.device?.deviceId;
-    const value = valueType.value ?? valueType.name ?? entry?.valueName;
-    const type = valueType.type ?? valueType.typeName ?? entry?.type;
-    if (String(entryDeviceId) !== String(deviceId)
-      || String(value) !== String(measurement.value)
-      || String(type) !== String(measurement.type)) continue;
-    if (entry.value === undefined || entry.value === null || entry.value === '') return null;
-    return {
-      value: entry.value,
-      time: entry.time || entry.timestamp || ''
-    };
-  }
-  return null;
-}
-
 async function publishCachedLiveValuesForBroker(snapshot, brokerId, messageKeys = null) {
   const jobs = activeLiveJobsFromState(snapshot, brokerId);
   const messages = jobs.flatMap((job) => {
@@ -1358,8 +1342,9 @@ async function publishLiveValuesForBroker(snapshot, brokerId, messageKeys = null
       for (const job of projectJobs) liveLastRequestedAt.set(`${brokerId}|${job.key}`, now);
       const values = [...new Set(projectJobs.map((job) => `${job.deviceId};${job.measurement.value};${job.measurement.type}`))];
       const data = await gridvis.getOnlineValues({ project, values, timeout: 500 });
+      const onlineValues = createOnlineValueLookup(data);
       const liveResults = projectJobs.map((job) => {
-        const result = onlineApiValue(data, job.measurement, job.deviceId);
+        const result = lookupOnlineValue(onlineValues, job.measurement, job.deviceId);
         if (!result) return { job, result: null, messages: [] };
         const built = buildDiscoveryMessagesForRequest({
           project: job.project,
