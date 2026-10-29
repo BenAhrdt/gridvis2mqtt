@@ -1,8 +1,10 @@
 const MAX_ENTRIES = 5000;
+const COMPACTION_THRESHOLD = 1024;
 const SENSITIVE_KEYS = new Set(['password', 'username', 'authorization', 'token', 'secret']);
 
 let nextId = 1;
 const entries = [];
+let firstEntryIndex = 0;
 
 function safeValue(value, key = '') {
   if (SENSITIVE_KEYS.has(String(key).toLowerCase())) return '[redacted]';
@@ -28,7 +30,13 @@ function add(level, event, details = {}) {
     details: normalizeDetails(details)
   };
   entries.push(entry);
-  if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
+  if (entries.length - firstEntryIndex > MAX_ENTRIES) firstEntryIndex += 1;
+  // Do not shift the complete 5,000-entry array for every new log entry. Keep
+  // the discarded prefix as a lazy offset and compact it in batches.
+  if (firstEntryIndex >= COMPACTION_THRESHOLD) {
+    entries.splice(0, firstEntryIndex);
+    firstEntryIndex = 0;
+  }
   return entry;
 }
 
@@ -40,7 +48,8 @@ export const logbook = {
   list({ limit = 500, level = '', query = '' } = {}) {
     const normalizedLimit = Math.min(MAX_ENTRIES, Math.max(1, Number(limit) || 500));
     const normalizedQuery = String(query || '').trim().toLowerCase();
-    return entries
+    const retainedEntries = firstEntryIndex ? entries.slice(firstEntryIndex) : entries;
+    return retainedEntries
       .filter((entry) => !level || entry.level === level)
       .filter((entry) => !normalizedQuery || JSON.stringify(entry).toLowerCase().includes(normalizedQuery))
       .slice(-normalizedLimit)
@@ -48,9 +57,10 @@ export const logbook = {
   },
   clear() {
     entries.length = 0;
+    firstEntryIndex = 0;
   },
   size() {
-    return entries.length;
+    return entries.length - firstEntryIndex;
   }
 };
 

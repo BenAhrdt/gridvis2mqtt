@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.12] - 2026-10-29
+
+- Das Logbuch verwaltet seine maximal 5.000 Einträge jetzt mit einem verzögerten Ring-/Prefix-Buffer statt bei jedem neuen Ereignis das gesamte Array am Anfang zu verschieben. Dadurch sinkt der CPU-Aufwand bei vielen API- und MQTT-Logeinträgen deutlich.
+
 ## [0.4.11] - 2026-10-29
 
 - Gebündelte GridVis-Liveantworten werden pro Projekt nur einmal normalisiert und danach per Lookup den Messwerten zugeordnet; MQTT-Topics, Payloads und das 2-Sekunden-Intervall bleiben unverändert.

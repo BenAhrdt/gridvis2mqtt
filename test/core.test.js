@@ -5,6 +5,7 @@ import { createOnlineValueLookup, GridVisClient, groupOnlineValueRequests, looku
 import { listDataFromResponse } from '../src/list-data.js';
 import { MqttPublisher } from '../src/mqtt-publisher.js';
 import { applyMqttOverviewRows } from '../src/mqtt-overview.js';
+import { logbook } from '../src/logbook.js';
 
 test('extracts wrapped GridVis device lists for the backend cache', () => {
   const devices = listDataFromResponse({
@@ -89,6 +90,17 @@ test('resolves normalized online values through a reusable lookup', () => {
     time: 100
   });
   assert.equal(lookupOnlineValue(lookup, { value: 'PowerActive', type: 'L2' }, 26), null);
+});
+
+test('keeps only the newest logbook entries without shifting on every append', () => {
+  logbook.clear();
+  for (let index = 0; index < 7005; index += 1) logbook.info('benchmark', { index });
+
+  const entries = logbook.list({ limit: 5000 });
+  assert.equal(logbook.size(), 5000);
+  assert.equal(entries[0].details.index, 7004);
+  assert.equal(entries.at(-1).details.index, 2005);
+  logbook.clear();
 });
 
 test('groups online value types like the ioBroker adapter', () => {
